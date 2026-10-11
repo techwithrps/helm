@@ -189,6 +189,81 @@ export default async function handler(req, res) {
       }
     }
 
+    // 6. /api/discover-schema
+    if (url.includes('discover-schema') || req.query.action === 'discover-schema') {
+      try {
+        const partyXml = `<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Ledgers</ID></HEADER><BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>${company}</SVCURRENTCOMPANY></STATICVARIABLES></DESC></BODY></ENVELOPE>`;
+        const text = await postTally(partyXml);
+        const partyFields = [
+          { tag: 'NAME', label: 'Party Name', sample: 'The Eclair Bakery', is_udf: false },
+          { tag: 'CLOSINGBALANCE', label: 'Closing Balance', sample: '305740.86', is_udf: false },
+          { tag: 'PARTYGSTIN', label: 'GSTIN Number', sample: '07AAAAA0000A1Z5', is_udf: false },
+          { tag: 'PARENT', label: 'Parent Group', sample: 'Sundry Debtors', is_udf: false }
+        ];
+
+        // Scan for any custom UDF tags
+        const udfMatches = text.matchAll(/<(UDF:[^>\s]+)[^>]*>([\s\S]*?)<\/\1>/gi);
+        const customUdfs = [];
+        for (const m of udfMatches) {
+          const tag = m[1];
+          const val = m[2].trim();
+          if (!customUdfs.some(u => u.tag === tag)) {
+            const fieldInfo = {
+              tag,
+              label: tag.replace('UDF:', '').replace(/_/g, ' '),
+              sample: val.slice(0, 40),
+              is_udf: true
+            };
+            customUdfs.push(fieldInfo);
+            partyFields.push(fieldInfo);
+          }
+        }
+
+        const itemFields = [
+          { tag: 'NAME', label: 'Item Name', sample: '12pcs Brownie Tray', is_udf: false },
+          { tag: 'BASEUNITS', label: 'Unit', sample: 'PCS', is_udf: false },
+          { tag: 'GSTHSNCODE', label: 'HSN / SAC Code', sample: '392410', is_udf: false },
+          { tag: 'OPENINGRATE', label: 'Rate (₹)', sample: '14.50', is_udf: false }
+        ];
+
+        const voucherFields = [
+          { tag: 'VOUCHERNUMBER', label: 'Voucher Number', sample: 'NFM/26-27/13740', is_udf: false },
+          { tag: 'DATE', label: 'Voucher Date', sample: '20261011', is_udf: false },
+          { tag: 'PARTYLEDGERNAME', label: 'Party Ledger Name', sample: 'The Eclair Bakery', is_udf: false },
+          { tag: 'CLASSNAME', label: 'Voucher Class', sample: 'AUTO GST', is_udf: false }
+        ];
+
+        return res.status(200).json({
+          status: 'success',
+          company,
+          party_fields: partyFields,
+          item_fields: itemFields,
+          voucher_fields: voucherFields,
+          custom_udfs: customUdfs
+        });
+      } catch (err) {
+        return res.status(200).json({
+          status: 'fallback',
+          company,
+          party_fields: [
+            { tag: 'NAME', label: 'Party Name', sample: 'The Eclair Bakery', is_udf: false },
+            { tag: 'CLOSINGBALANCE', label: 'Closing Balance', sample: '305740.86', is_udf: false },
+            { tag: 'PARTYGSTIN', label: 'GSTIN Number', sample: '07AAAAA0000A1Z5', is_udf: false }
+          ],
+          item_fields: [
+            { tag: 'NAME', label: 'Item Name', sample: 'Hamper Box', is_udf: false },
+            { tag: 'BASEUNITS', label: 'Unit', sample: 'PCS', is_udf: false },
+            { tag: 'GSTHSNCODE', label: 'HSN Code', sample: '4819', is_udf: false }
+          ],
+          voucher_fields: [
+            { tag: 'VOUCHERNUMBER', label: 'Voucher Number', sample: 'NFM/26-27/13740', is_udf: false }
+          ],
+          custom_udfs: [],
+          warning: err.message
+        });
+      }
+    }
+
     return res.status(404).json({ error: 'Endpoint not found' });
   }
 

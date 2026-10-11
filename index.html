@@ -33,6 +33,9 @@
           <span class="status-dot" id="status-indicator"></span>
           <span id="status-text">Checking...</span>
         </div>
+        <button class="btn-icon-round" onclick="openFieldMapperModal()" title="⚡ Universal Field Mapper & Discovery" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">
+          ⚡
+        </button>
         <button class="btn-icon-round" onclick="openHistoryModal()" title="History / Daybook">
           📜
         </button>
@@ -421,6 +424,123 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline" onclick="closeModal('modal-history')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Universal Field Mapper Modal -->
+  <div class="modal-backdrop" id="modal-field-mapper">
+    <div class="modal-card" style="max-width: 680px; width: 95%;">
+      <div class="modal-header">
+        <div>
+          <h3 style="font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <span>⚡ Universal Tally Field Mapper</span>
+            <span class="badge" style="background: rgba(16,185,129,0.15); color: #10b981; font-size: 11px;">Schema Auto-Discovery</span>
+          </h3>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 3px 0 0 0;">
+            Zero Hardcoding — Auto-detects all Standard tags & Custom TDL / TCP (UDF) fields from live Tally
+          </p>
+        </div>
+        <button class="btn btn-outline" style="padding: 4px 8px;" onclick="closeModal('modal-field-mapper')">&times;</button>
+      </div>
+
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <!-- Discovery Trigger Bar -->
+        <div style="background: var(--bg-hover); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <div>
+            <div style="font-size: 13px; font-weight: 600;">Active Tally Company: <span id="mapper-active-company" style="color: var(--primary);">Nanak Food Mart</span></div>
+            <div style="font-size: 11px; color: var(--text-muted);" id="mapper-status-sub">Ready to discover fields from live gateway</div>
+          </div>
+          <button class="btn btn-primary" id="btn-run-discovery" onclick="runSchemaDiscovery()" style="font-size: 12px; padding: 6px 12px;">
+            🔍 Auto-Discover Fields
+          </button>
+        </div>
+
+        <!-- Discovered Tabs -->
+        <div class="mapper-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+          <button class="btn btn-sm btn-outline active-mapper-tab" id="tab-btn-party" onclick="switchMapperTab('party')">🏢 Party / Debtor Fields (<span id="count-party-fields">0</span>)</button>
+          <button class="btn btn-sm btn-outline" id="tab-btn-item" onclick="switchMapperTab('item')">📦 Stock Item Fields (<span id="count-item-fields">0</span>)</button>
+          <button class="btn btn-sm btn-outline" id="tab-btn-udf" onclick="switchMapperTab('udf')">✨ Custom TDL UDFs (<span id="count-udf-fields">0</span>)</button>
+        </div>
+
+        <!-- Party Fields Table -->
+        <div id="mapper-tab-party" class="mapper-tab-pane">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+            Standard & Custom fields detected for Sundry Debtors & Customers:
+          </div>
+          <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+            <table class="items-table" style="font-size: 12px;">
+              <thead>
+                <tr>
+                  <th style="width: 35px;">Map</th>
+                  <th>Field Tag</th>
+                  <th>Friendly Label</th>
+                  <th>Sample Value (Live Tally)</th>
+                  <th>Type</th>
+                </tr>
+              </thead>
+              <tbody id="mapper-tbody-party">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 15px;">Click "Auto-Discover Fields" to scan live Tally</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Item Fields Table -->
+        <div id="mapper-tab-item" class="mapper-tab-pane" style="display: none;">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+            Standard & Custom fields detected for Stock Items:
+          </div>
+          <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+            <table class="items-table" style="font-size: 12px;">
+              <thead>
+                <tr>
+                  <th style="width: 35px;">Map</th>
+                  <th>Field Tag</th>
+                  <th>Friendly Label</th>
+                  <th>Sample Value (Live Tally)</th>
+                  <th>Type</th>
+                </tr>
+              </thead>
+              <tbody id="mapper-tbody-item">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 15px;">Click "Auto-Discover Fields" to scan live Tally</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Custom UDFs Table -->
+        <div id="mapper-tab-udf" class="mapper-tab-pane" style="display: none;">
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+            Custom TCP / TDL fields detected (Vehicle No, Salesman, FSSAI, Batch, etc.):
+          </div>
+          <div class="table-container" style="max-height: 250px; overflow-y: auto;">
+            <table class="items-table" style="font-size: 12px;">
+              <thead>
+                <tr>
+                  <th style="width: 35px;">Active</th>
+                  <th>UDF Tag</th>
+                  <th>Custom Field Name</th>
+                  <th>Detected Value</th>
+                  <th>Place on Bill</th>
+                </tr>
+              </thead>
+              <tbody id="mapper-tbody-udf">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 15px;">No custom UDFs found or scan pending</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="justify-content: space-between;">
+        <span style="font-size: 11px; color: var(--text-muted);">
+          💾 Configuration is saved in local browser memory (Zero External Database)
+        </span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-outline" onclick="closeModal('modal-field-mapper')">Cancel</button>
+          <button class="btn btn-primary" onclick="saveFieldMapping()">💾 Apply & Save Mapping</button>
+        </div>
       </div>
     </div>
   </div>

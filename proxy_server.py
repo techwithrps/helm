@@ -279,6 +279,101 @@ def fetch_realtime_next_voucher(vch_type="Sales", target_url=DEFAULT_CONNECTOR_U
     except Exception as e:
         return {"status": "fallback", "type": vch_type, "next_voucher_number": "NFM/26-27/13740", "error": str(e)}
 
+def discover_tally_schema(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPANY):
+    """
+    Universal Schema Discovery Engine:
+    Queries Tally for native objects and extracts ALL standard tags + Custom TDL/TCP (UDF) fields.
+    Returns structured schema with sample values for easy visual mapping.
+    """
+    discovered = {
+        "status": "success",
+        "company": company,
+        "party_fields": [],
+        "item_fields": [],
+        "voucher_fields": [],
+        "custom_udfs": [],
+        "sample_party": None,
+        "sample_item": None
+    }
+    
+    # 1. Inspect Party / Ledger Schema
+    try:
+        xml_res = post_to_tally(f"""<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Ledgers</ID></HEADER>
+  <BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY></STATICVARIABLES></DESC></BODY>
+</ENVELOPE>""", target_url, timeout=25)
+        clean_xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_res)
+        root = ET.fromstring(clean_xml.strip().encode('utf-8'))
+        ledgers = root.findall(".//LEDGER")
+        if ledgers:
+            # Pick a rich sample ledger (preferably under Sundry Debtors)
+            sample_led = next((l for l in ledgers if "debtor" in (l.findtext("PARENT") or "").lower()), ledgers[0])
+            discovered["sample_party"] = sample_led.get("NAME") or sample_led.findtext("NAME")
+            
+            seen_tags = set()
+            for child in sample_led:
+                tag = child.tag
+                if tag not in seen_tags:
+                    seen_tags.add(tag)
+                    val = (child.text or "").strip()
+                    is_udf = "UDF" in tag or tag.startswith("UDF:") or ":" in tag
+                    field_info = {
+                        "tag": tag,
+                        "label": tag.replace("UDF:", "").replace("_", " ").title(),
+                        "sample": val[:40] if val else "",
+                        "is_udf": is_udf,
+                        "category": "party"
+                    }
+                    discovered["party_fields"].append(field_info)
+                    if is_udf:
+                        discovered["custom_udfs"].append(field_info)
+    except Exception as e:
+        discovered["party_error"] = str(e)
+
+    # 2. Inspect Stock Item Schema
+    try:
+        xml_res = post_to_tally(f"""<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>List of Stock Items</ID></HEADER>
+  <BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY></STATICVARIABLES></DESC></BODY>
+</ENVELOPE>""", target_url, timeout=25)
+        clean_xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_res)
+        root = ET.fromstring(clean_xml.strip().encode('utf-8'))
+        items = root.findall(".//STOCKITEM")
+        if items:
+            sample_item = items[0]
+            discovered["sample_item"] = sample_item.get("NAME") or sample_item.findtext("NAME")
+            seen_tags = set()
+            for child in sample_item:
+                tag = child.tag
+                if tag not in seen_tags:
+                    seen_tags.add(tag)
+                    val = (child.text or "").strip()
+                    is_udf = "UDF" in tag or tag.startswith("UDF:") or ":" in tag
+                    field_info = {
+                        "tag": tag,
+                        "label": tag.replace("UDF:", "").replace("_", " ").title(),
+                        "sample": val[:40] if val else "",
+                        "is_udf": is_udf,
+                        "category": "item"
+                    }
+                    discovered["item_fields"].append(field_info)
+                    if is_udf:
+                        discovered["custom_udfs"].append(field_info)
+    except Exception as e:
+        discovered["item_error"] = str(e)
+
+    # Standard Essential Voucher Fields Registry
+    discovered["voucher_fields"] = [
+        {"tag": "VOUCHERNUMBER", "label": "Voucher Number", "sample": "NFM/26-27/13740", "is_udf": False, "category": "voucher"},
+        {"tag": "DATE", "label": "Voucher Date", "sample": "20261011", "is_udf": False, "category": "voucher"},
+        {"tag": "PARTYLEDGERNAME", "label": "Party Ledger Name", "sample": "The Eclair Bakery", "is_udf": False, "category": "voucher"},
+        {"tag": "PLACEOFSUPPLY", "label": "Place of Supply", "sample": "07 Delhi", "is_udf": False, "category": "voucher"},
+        {"tag": "NARRATION", "label": "Narration / Note", "sample": "Being Goods Sold Against Order", "is_udf": False, "category": "voucher"},
+        {"tag": "CLASSNAME", "label": "Voucher Class (AUTO GST)", "sample": "AUTO GST", "is_udf": False, "category": "voucher"}
+    ]
+
+    return discovered
+
 class BillingHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
@@ -338,6 +433,11 @@ class BillingHandler(http.server.SimpleHTTPRequestHandler):
                     return self.send_json_response({"status": "online", "company": company, "preview": resp_data[:200]})
             except Exception as e:
                 return self.send_json_response({"status": "offline", "error": str(e)})
+
+        # 6. Universal Schema Discovery (Standard + Custom UDFs)
+        elif path == "/api/discover-schema":
+            data = discover_tally_schema(target_url, company)
+            return self.send_json_response(data)
 
         # Default static web asset serving (index.html, styles.css, app.js)
         super().do_GET()

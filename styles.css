@@ -578,6 +578,27 @@ body.full-width-mode .grid-4 {
   font-weight: 600;
 }
 
+/* Universal Field Mapper Styles */
+.active-mapper-tab {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb !important;
+  font-weight: 700 !important;
+}
+
+.badge-primary {
+  background: #ede9fe;
+  color: #6366f1;
+  border: 1px solid #c7d2fe;
+}
+
+.badge-neutral {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+
 .text-right {
   text-align: right;
 }
