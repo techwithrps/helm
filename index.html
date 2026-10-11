@@ -9,29 +9,49 @@
 </head>
 <body>
 
-  <!-- Top Navigation Bar -->
-  <header class="top-navbar">
-    <div class="brand-section">
-      <div class="brand-logo-badge">⚡</div>
-      <div>
-        <h1 class="brand-title">TallyPrime Smart Billing Suite</h1>
-        <p class="brand-sub">GST Compliant Invoicing & Realtime Tally Gateway</p>
+  <!-- Desktop View Helper (Visible only on Desktop wide screens) -->
+  <div class="desktop-view-switcher no-print">
+    <span>📱 Mobile View Active</span>
+    <button class="btn-outline-light" onclick="toggleDeviceView()" id="btn-toggle-view">🖥️ Full Screen</button>
+  </div>
+
+  <!-- Mobile App Device Shell (Centered Mobile View) -->
+  <div class="mobile-device-wrapper" id="device-wrapper">
+
+    <!-- Smartphone Notch / Status Bar -->
+    <div class="mobile-notch-bar no-print">
+      <span class="notch-time" id="mobile-notch-time">12:30</span>
+      <div class="notch-pill"></div>
+      <div class="notch-icons">
+        <span style="font-size: 10px; font-weight: 800;">5G</span>
+        <span>📶</span>
+        <span>🔋</span>
       </div>
     </div>
 
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <div class="connector-status-badge">
-        <span class="status-dot" id="status-indicator"></span>
-        <span id="status-text">Checking Connector...</span>
+    <!-- Top Navigation Bar -->
+    <header class="top-navbar">
+      <div class="brand-section">
+        <div class="brand-logo-badge">⚡</div>
+        <div>
+          <h1 class="brand-title">Nanak Food Mart</h1>
+          <p class="brand-sub">TallyPrime Gold POS</p>
+        </div>
       </div>
-      <button class="btn btn-outline" onclick="openHistoryModal()">
-        📜 History
-      </button>
-      <button class="btn btn-outline" onclick="openSettingsModal()">
-        ⚙️ Settings
-      </button>
-    </div>
-  </header>
+
+      <div class="nav-actions">
+        <div class="connector-status-badge" title="Tally Connector Status">
+          <span class="status-dot" id="status-indicator"></span>
+          <span id="status-text">Checking...</span>
+        </div>
+        <button class="btn-icon-round" onclick="openHistoryModal()" title="History / Daybook">
+          📜
+        </button>
+        <button class="btn-icon-round" onclick="openSettingsModal()" title="Settings">
+          ⚙️
+        </button>
+      </div>
+    </header>
 
   <!-- Main Container -->
   <main class="app-container">
@@ -349,12 +369,18 @@
         <span id="mobile-bar-count">1 Item</span>
         <strong id="mobile-bar-total">₹0.00</strong>
       </div>
-      <button class="btn btn-success mobile-bar-btn" onclick="pushVoucherToTally()">
-        ⚡ Push Tally
-      </button>
+      <div class="mobile-bar-actions">
+        <button class="btn btn-outline" style="padding: 8px 12px; font-size: 12px; color: #fff; border-color: rgba(255,255,255,0.2);" onclick="previewTallyXml()">
+          📑 XML
+        </button>
+        <button class="btn btn-success mobile-bar-btn" onclick="pushVoucherToTally()">
+          ⚡ Push Tally
+        </button>
+      </div>
     </div>
 
   </main>
+  </div> <!-- End .mobile-device-wrapper -->
 
   <!-- =========================================================================
        MODALS: XML PREVIEW & CONNECTOR SETTINGS

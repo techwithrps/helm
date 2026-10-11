@@ -1282,3 +1282,28 @@ function renderHistory() {
   `).join('');
 }
 
+// =========================================================================
+// MOBILE DEVICE VIEW TOGGLE & CLOCK
+// =========================================================================
+
+function toggleDeviceView() {
+  document.body.classList.toggle("full-width-mode");
+  const isFull = document.body.classList.contains("full-width-mode");
+  const btn = document.getElementById("btn-toggle-view");
+  if (btn) {
+    btn.textContent = isFull ? "📱 Switch to Phone View" : "🖥️ Full Screen";
+  }
+}
+
+function updateNotchClock() {
+  const clock = document.getElementById("mobile-notch-time");
+  if (!clock) return;
+  const now = new Date();
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  clock.textContent = `${hours}:${minutes}`;
+}
+setInterval(updateNotchClock, 30000);
+updateNotchClock();
+
+
