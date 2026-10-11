@@ -294,34 +294,34 @@ function addItemRow(initialData = null) {
   tr.id = `item-row-${rowCounter}`;
 
   tr.innerHTML = `
-    <td class="text-center mono row-idx">${tbody.children.length + 1}</td>
-    <td>
+    <td class="text-center mono row-idx" data-label="#">${tbody.children.length + 1}</td>
+    <td data-label="Item Description">
       <input type="text" class="form-control item-name" list="stock-item-datalist" 
              placeholder="Select / Type Stock Item" value="${initialData?.name || ''}" 
              onchange="handleItemSelect(${rowCounter})" required>
     </td>
-    <td>
+    <td data-label="HSN / SAC">
       <input type="text" class="form-control mono item-hsn" placeholder="HSN/SAC" 
              value="${initialData?.hsn || ''}" oninput="recalculateTotals()">
     </td>
-    <td>
+    <td data-label="Qty">
       <input type="number" class="form-control mono text-right item-qty" min="1" step="any" 
              value="${initialData?.qty || 1}" oninput="recalculateTotals()">
     </td>
-    <td>
+    <td data-label="Unit">
       <input type="text" class="form-control item-unit" placeholder="Unit" 
              value="${initialData?.unit || 'PCS'}" oninput="recalculateTotals()">
     </td>
-    <td>
+    <td data-label="Rate (₹)">
       <input type="number" class="form-control mono text-right item-rate" min="0" step="0.01" 
              value="${initialData?.rate || '0.00'}" oninput="recalculateTotals()">
     </td>
-    <td>
+    <td data-label="Disc (%)">
       <input type="number" class="form-control mono text-right item-disc" min="0" max="100" step="0.1" 
              value="${initialData?.discount || '0.00'}" oninput="recalculateTotals()">
     </td>
-    <td class="text-right mono item-taxable">₹0.00</td>
-    <td>
+    <td class="text-right mono item-taxable" data-label="Taxable">₹0.00</td>
+    <td data-label="GST Rate">
       <select class="form-control item-gst" onchange="recalculateTotals()">
         <option value="0" ${initialData?.gst === 0 ? 'selected' : ''}>0%</option>
         <option value="5" ${initialData?.gst === 5 ? 'selected' : ''}>5%</option>
@@ -330,9 +330,9 @@ function addItemRow(initialData = null) {
         <option value="28" ${initialData?.gst === 28 ? 'selected' : ''}>28%</option>
       </select>
     </td>
-    <td class="text-right mono item-tax-amt">₹0.00</td>
-    <td class="text-right mono item-total-amt">₹0.00</td>
-    <td class="text-center no-print">
+    <td class="text-right mono item-tax-amt" data-label="Tax">₹0.00</td>
+    <td class="text-right mono item-total-amt" data-label="Total">₹0.00</td>
+    <td class="text-center no-print" data-label="Action">
       <button class="btn btn-danger-outline" onclick="removeItemRow(${rowCounter})" title="Delete Line">&times;</button>
     </td>
   `;
@@ -1312,20 +1312,24 @@ async function checkConnectorStatus() {
   const text = document.getElementById("status-text");
 
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
     const res = await fetch("/api/ping-tally", {
-      headers: { "X-Tally-URL": appConfig.connectorUrl }
+      headers: { "X-Tally-URL": appConfig.connectorUrl },
+      signal: controller.signal
     });
+    clearTimeout(timer);
     const data = await res.json();
     if (data.status === "online") {
       dot.className = "status-dot online";
-      text.textContent = `TallyPrime Online (${appConfig.companyName})`;
+      text.textContent = `Online (${appConfig.companyName})`;
     } else {
       dot.className = "status-dot";
-      text.textContent = `Tally Connector Offline`;
+      text.textContent = `Standby (Offline)`;
     }
   } catch (e) {
     dot.className = "status-dot";
-    text.textContent = `Connector Standby`;
+    text.textContent = `Standby (Offline)`;
   }
 }
 
