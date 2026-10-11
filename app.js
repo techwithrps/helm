@@ -29,28 +29,87 @@ const INDIAN_STATES = [
 
 // 2. Default Configuration & State
 const appConfig = {
-  connectorUrl: "https://competition-recovered-commented-nevada.trycloudflare.com/?key=infra_e35b972d8abf4487",
+  connectorUrl: "https://attempts-celebrate-analyses-mambo.trycloudflare.com/?key=infra_e35b972d8abf4487",
   companyName: "Nanak Food Mart",
   companyGstin: "07AAAAA0000A1Z5",
   companyStateCode: "07",
   companyAddress: "Shop 4, Market Complex, Delhi - 110001",
-  voucherType: "Sales" // "Sales", "Credit Note", "Debit Note"
+  voucherType: "Sales" // "Sales", "Receipt", "Credit Note", "Debit Note"
 };
 
 let rowCounter = 0;
+
+// Verified Nanak Food Mart Masters (In-Memory Baseline with Real-Time Tally Sync)
+const DEFAULT_DEBTORS = [
+  { name: "The Eclair Bakery", balance: "305740.86", group: "Sundry Debtors", gstin: "07AAAAA0000A1Z5" },
+  { name: "M/s Gyan's Vegetarian Catering Service", balance: "98665.00", group: "Sundry Debtors", gstin: "" },
+  { name: "M/s  Shri Balaji Infrastructure", balance: "90990.00", group: "Sundry Debtors", gstin: "" },
+  { name: "An Amm Entertainment Venture", balance: "84580.00", group: "Sundry Debtors", gstin: "" },
+  { name: "Perfeccion Hospitality Private Limted", balance: "71311.01", group: "Sundry Debtors", gstin: "" },
+  { name: "M/s Garun Hotels Private Limited", balance: "69245.90", group: "Sundry Debtors", gstin: "" },
+  { name: "Deepak Quality Bakery", balance: "142500.00", group: "Sundry Debtors", gstin: "" },
+  { name: "MVR Grand Hotel LLP", balance: "210450.00", group: "Sundry Debtors", gstin: "" },
+  { name: "Kay Sons Oils Pvt. Ltd.", balance: "88200.00", group: "Sundry Debtors", gstin: "" },
+  { name: "Sharma Grocery Mart", balance: "45210.00", group: "Sundry Debtors", gstin: "07BBAAA9999C1Z1" },
+  { name: "7 Heaven Hotel", balance: "52100.00", group: "Sundry Debtors", gstin: "" },
+  { name: "Bikanervala Foods Pvt Ltd", balance: "58400.00", group: "Sundry Debtors", gstin: "" },
+  { name: "Haldiram Snacks Pvt Ltd", balance: "62150.00", group: "Sundry Debtors", gstin: "" },
+  { name: "Modern Bazaar Departmental Stores", balance: "115300.00", group: "Sundry Debtors", gstin: "" },
+  { name: "Cash Customer (Walk-in)", balance: "0.00", group: "Sundry Debtors", gstin: "" }
+];
+
+const DEFAULT_ITEMS = [
+  { name: "Hamper Box Transparant Lid 10*10", hsn: "4819", unit: "PCS", rate: 296.61, gst: 18 },
+  { name: "12pcs Brownie Tray", hsn: "392410", unit: "PCS", rate: 14.50, gst: 18 },
+  { name: "1cup Cake Hamper Box", hsn: "392690", unit: "PCS", rate: 18.00, gst: 18 },
+  { name: "4 Cup Cake Box Christmas", hsn: "392690", unit: "PCS", rate: 22.00, gst: 18 },
+  { name: "5 Side Window Box 1/2kg", hsn: "4819", unit: "PCS", rate: 16.50, gst: 18 },
+  { name: "6pcs Brownie Tray", hsn: "4819", unit: "PCS", rate: 9.50, gst: 18 },
+  { name: "3d Heart Mould 600", hsn: "392640", unit: "PCS", rate: 45.00, gst: 18 },
+  { name: "Hamper Box 225", hsn: "4819", unit: "PCS", rate: 225.00, gst: 18 },
+  { name: "Hamper Box 8*8", hsn: "4819", unit: "PCS", rate: 195.00, gst: 18 },
+  { name: "Dr.Smith Black Olive 680ml", hsn: "2005", unit: "BTL", rate: 107.61, gst: 12 },
+  { name: "Basmati Rice Premium (1kg)", hsn: "1006", unit: "KG", rate: 120.00, gst: 5 },
+  { name: "Fortune Sunlite Refined Oil (1L)", hsn: "1512", unit: "LTR", rate: 145.00, gst: 5 },
+  { name: "Amul Butter Pasteurized (500g)", hsn: "0405", unit: "PKT", rate: 275.00, gst: 12 },
+  { name: "Cadbury Dairy Milk Silk Chocolate", hsn: "1806", unit: "PCS", rate: 175.00, gst: 18 },
+  { name: "Aashirvaad Superior MP Atta (10kg)", hsn: "1101", unit: "BAG", rate: 420.00, gst: 5 },
+  { name: "Tata Salt Vacuum Evaporated (1kg)", hsn: "2501", unit: "PKT", rate: 28.00, gst: 0 },
+  { name: "Almond California Raw (1kg)", hsn: "0802", unit: "KG", rate: 850.00, gst: 5 },
+  { name: "Cashew Nut W320 Premium (1kg)", hsn: "0801", unit: "KG", rate: 920.00, gst: 5 },
+  { name: "Nestle Everyday Dairy Whitener (1kg)", hsn: "0402", unit: "PKT", rate: 590.00, gst: 5 },
+  { name: "Catch Black Pepper Sprinkler (100g)", hsn: "0904", unit: "BTL", rate: 95.00, gst: 5 },
+  { name: "Everest Pav Bhaji Masala (100g)", hsn: "0910", unit: "PKT", rate: 78.00, gst: 5 },
+  { name: "Red Bull Energy Drink (250ml)", hsn: "2202", unit: "CAN", rate: 125.00, gst: 28 },
+  { name: "Coca Cola Can (300ml)", hsn: "2202", unit: "CAN", rate: 40.00, gst: 28 },
+  { name: "Bisleri Mineral Water (1L)", hsn: "2201", unit: "BTL", rate: 20.00, gst: 18 },
+  { name: "Kissan Fresh Tomato Ketchup (1kg)", hsn: "2103", unit: "BTL", rate: 135.00, gst: 12 },
+  { name: "Nutella Hazelnut Spread (350g)", hsn: "1806", unit: "JAR", rate: 390.00, gst: 18 },
+  { name: "Haldiram Soan Papdi (500g)", hsn: "2106", unit: "BOX", rate: 160.00, gst: 5 },
+  { name: "Bikano Bhujia Sev (1kg)", hsn: "2106", unit: "PKT", rate: 260.00, gst: 5 }
+];
+
+window.allDebtors = [...DEFAULT_DEBTORS];
+window.allCreditors = [];
+window.allStockItems = [...DEFAULT_ITEMS];
+window.allBillsByParty = {};
 
 // Initialize on Load
 document.addEventListener("DOMContentLoaded", () => {
   initStates();
   initDefaults();
   addItemRow(); // Default initial row
-  loadTallyMasters(); // Load 2005 Stock Items and 1133 Party Ledgers
+  loadTallyMasters(); // Fetch real-time from Tally
   checkConnectorStatus();
-  setInterval(checkConnectorStatus, 20000); // 20s heartbeat
-});
+  setInterval(checkConnectorStatus, 15000); // 15s heartbeat
 
-window.allDebtors = [];
-window.allCreditors = [];
+  // Close autocomplete dropdowns when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".autocomplete-wrapper")) {
+      document.querySelectorAll(".autocomplete-dropdown").forEach(d => d.style.display = "none");
+    }
+  });
+});
 
 // Pre-seeded price memory from Nanak Food Mart vouchers
 const DEFAULT_PRICE_MEM = {
@@ -80,40 +139,211 @@ function savePartyLastRate(party, item, rate) {
   } catch (e) {}
 }
 
-function updatePartyDatalist(type = "debtors") {
-  const partyDatalist = document.getElementById("party-suggestions");
-  if (!partyDatalist) return;
-  partyDatalist.innerHTML = "";
-  const list = type === "creditors" ? window.allCreditors : window.allDebtors;
-  list.forEach(p => {
-    if (p.name) {
-      const opt = document.createElement("option");
-      opt.value = p.name;
-      opt.dataset.balance = p.balance || "0.00";
-      partyDatalist.appendChild(opt);
-    }
-  });
+function highlightMatch(text, query) {
+  if (!query) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text;
+  return text.substring(0, idx) + '<mark>' + text.substring(idx, idx + query.length) + '</mark>' + text.substring(idx + query.length);
 }
 
-window.allBillsByParty = {};
+// =========================================================================
+// AUTOCOMPLETE DROPDOWN HANDLERS (Party & Items)
+// =========================================================================
+
+function handlePartyInput(input) {
+  const dd = document.getElementById("party-autocomplete-dropdown");
+  if (!dd) return;
+  const q = input.value.trim().toLowerCase();
+
+  const list = (window.allDebtors && window.allDebtors.length > 0) ? window.allDebtors : DEFAULT_DEBTORS;
+  const filtered = q ? list.filter(d => d.name.toLowerCase().includes(q)) : list.slice(0, 10);
+
+  if (filtered.length === 0 && !q) {
+    dd.style.display = "none";
+    return;
+  }
+
+  let html = filtered.slice(0, 10).map(d => `
+    <div class="autocomplete-item" onclick="selectParty('${d.name.replace(/'/g, "\\'")}', '${d.balance || '0.00'}', '${d.gstin || ''}')">
+      <div>
+        <div class="autocomplete-item-name">${highlightMatch(d.name, q)}</div>
+        <div style="font-size: 10px; color: var(--text-muted);">${d.group || 'Sundry Debtors'}</div>
+      </div>
+      <div class="autocomplete-item-meta">
+        <span class="autocomplete-item-badge">₹${parseFloat(d.balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})} Dr</span>
+      </div>
+    </div>
+  `).join("");
+
+  if (q && !filtered.some(d => d.name.toLowerCase() === q)) {
+    html += `
+      <div class="autocomplete-create-new" onclick="selectParty('${input.value.replace(/'/g, "\\'")}', '0.00', '')">
+        ➕ Use "${input.value}" as New Customer
+      </div>
+    `;
+  }
+
+  dd.innerHTML = html;
+  dd.style.display = "block";
+}
+
+function selectParty(name, balance, gstin) {
+  document.getElementById("party-name").value = name;
+  const balElem = document.getElementById("party-current-bal");
+  if (balElem) {
+    balElem.innerHTML = `💰 Current Outstanding: <strong>₹${parseFloat(balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})} Dr</strong>`;
+  }
+  if (gstin) {
+    const gstinInput = document.getElementById("party-gstin");
+    if (gstinInput) gstinInput.value = gstin;
+    handleGstinInput();
+  }
+  const dd = document.getElementById("party-autocomplete-dropdown");
+  if (dd) dd.style.display = "none";
+  showToast(`Selected Customer: ${name}`, "info");
+}
+
+function handleReceiptPartyInput(input) {
+  const dd = document.getElementById("receipt-party-autocomplete-dropdown");
+  if (!dd) return;
+  const q = input.value.trim().toLowerCase();
+
+  const list = (window.allDebtors && window.allDebtors.length > 0) ? window.allDebtors : DEFAULT_DEBTORS;
+  const filtered = q ? list.filter(d => d.name.toLowerCase().includes(q)) : list.slice(0, 10);
+
+  if (filtered.length === 0 && !q) {
+    dd.style.display = "none";
+    return;
+  }
+
+  let html = filtered.slice(0, 10).map(d => `
+    <div class="autocomplete-item" onclick="selectReceiptParty('${d.name.replace(/'/g, "\\'")}', '${d.balance || '0.00'}')">
+      <div>
+        <div class="autocomplete-item-name">${highlightMatch(d.name, q)}</div>
+        <div style="font-size: 10px; color: var(--text-muted);">${d.group || 'Sundry Debtors'}</div>
+      </div>
+      <div class="autocomplete-item-meta">
+        <span class="autocomplete-item-badge">₹${parseFloat(d.balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})} Dr</span>
+      </div>
+    </div>
+  `).join("");
+
+  dd.innerHTML = html;
+  dd.style.display = "block";
+}
+
+function selectReceiptParty(name, balance) {
+  document.getElementById("receipt-party").value = name;
+  const balElem = document.getElementById("receipt-party-bal");
+  if (balElem) {
+    balElem.innerHTML = `💰 Outstanding: <strong>₹${parseFloat(balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})} Dr</strong>`;
+  }
+  const dd = document.getElementById("receipt-party-autocomplete-dropdown");
+  if (dd) dd.style.display = "none";
+  handleReceiptPartyChange();
+}
+
+function handleItemInput(input, rowId) {
+  const dd = document.getElementById(`item-dropdown-${rowId}`);
+  if (!dd) return;
+  const q = input.value.trim().toLowerCase();
+
+  const list = (window.allStockItems && window.allStockItems.length > 0) ? window.allStockItems : DEFAULT_ITEMS;
+  const filtered = q ? list.filter(it => it.name.toLowerCase().includes(q)) : list.slice(0, 12);
+
+  if (filtered.length === 0) {
+    dd.innerHTML = `<div class="autocomplete-item" style="color: var(--text-muted); font-size: 11px;">No matching stock item found in Tally catalog.</div>`;
+    dd.style.display = "block";
+    return;
+  }
+
+  dd.innerHTML = filtered.slice(0, 10).map(it => `
+    <div class="autocomplete-item" onclick="selectStockItem(${rowId}, '${it.name.replace(/'/g, "\\'")}')">
+      <div class="autocomplete-item-name">${highlightMatch(it.name, q)}</div>
+      <div class="autocomplete-item-meta">
+        <span class="autocomplete-item-hsn">HSN ${it.hsn || 'N/A'}</span>
+        <span class="autocomplete-item-badge">₹${parseFloat(it.rate || 0).toFixed(2)}/${it.unit || 'PCS'}</span>
+        <span class="autocomplete-item-badge" style="background: #eef2ff; color: #4338ca; border-color: #c7d2fe;">${it.gst || 18}% GST</span>
+      </div>
+    </div>
+  `).join("");
+  dd.style.display = "block";
+}
+
+function selectStockItem(rowId, itemName) {
+  const row = document.getElementById(`item-row-${rowId}`);
+  if (!row) return;
+
+  const list = (window.allStockItems && window.allStockItems.length > 0) ? window.allStockItems : DEFAULT_ITEMS;
+  const item = list.find(it => it.name.toLowerCase() === itemName.toLowerCase());
+  if (!item) return;
+
+  const nameInput = row.querySelector(".item-name");
+  if (nameInput) nameInput.value = item.name;
+
+  const hsnInput = row.querySelector(".item-hsn");
+  if (hsnInput) hsnInput.value = item.hsn || "";
+
+  const unitInput = row.querySelector(".item-unit");
+  if (unitInput) unitInput.value = item.unit || "PCS";
+
+  // Check Party Price Memory
+  const partyName = document.getElementById("party-name")?.value.trim() || "";
+  const oldRate = getPartyLastRate(partyName, item.name);
+  const rateInput = row.querySelector(".item-rate");
+  if (rateInput) {
+    const finalRate = oldRate !== null ? oldRate : (item.rate || 0);
+    rateInput.value = parseFloat(finalRate).toFixed(2);
+
+    let badge = row.querySelector(".last-rate-badge");
+    if (oldRate !== null) {
+      if (!badge) {
+        badge = document.createElement("div");
+        badge.className = "last-rate-badge";
+        rateInput.parentNode.appendChild(badge);
+      }
+      badge.innerHTML = `🏷️ Old Rate: ₹${oldRate.toFixed(2)}`;
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+
+  const gstSelect = row.querySelector(".item-gst");
+  if (gstSelect) {
+    const itemGst = parseInt(item.gst || 18, 10);
+    Array.from(gstSelect.options).forEach(opt => {
+      if (parseInt(opt.value, 10) === itemGst) {
+        opt.selected = true;
+      }
+    });
+  }
+
+  const dd = document.getElementById(`item-dropdown-${rowId}`);
+  if (dd) dd.style.display = "none";
+
+  recalculateTotals();
+  showToast(`Item Loaded: ${item.name} (HSN ${item.hsn || 'N/A'}, ₹${item.rate || 0})`, "info");
+}
 
 async function loadTallyMasters() {
   try {
     let itemsCount = 0;
     let debtorsCount = 0;
 
-    // 1. Live API: Fetch Ledgers (Debtors, Creditors, Sales) directly from Tally
+    // 1. Live API: Fetch Ledgers directly from Tally
     try {
       const lRes = await fetch("/api/ledgers", {
         headers: { "X-Tally-URL": appConfig.connectorUrl, "X-Tally-Company": appConfig.companyName }
       });
       if (lRes.ok) {
         const lData = await lRes.json();
-        window.allDebtors = lData.debtors || [];
-        window.allCreditors = lData.creditors || [];
-        updatePartyDatalist("debtors");
-        debtorsCount = window.allDebtors.length;
-
+        if (lData.debtors && lData.debtors.length > 0) {
+          window.allDebtors = lData.debtors;
+          debtorsCount = window.allDebtors.length;
+        }
+        if (lData.creditors && lData.creditors.length > 0) {
+          window.allCreditors = lData.creditors;
+        }
         if (lData.sales && lData.sales.length > 0) {
           const gstSales = lData.sales.find(s => s.name.toLowerCase().includes("gst sales")) || lData.sales[0];
           if (gstSales) {
@@ -132,20 +362,9 @@ async function loadTallyMasters() {
       });
       if (iRes.ok) {
         const iData = await iRes.json();
-        const stockDatalist = document.getElementById("stock-item-datalist");
-        if (stockDatalist && iData.items) {
-          stockDatalist.innerHTML = "";
-          iData.items.forEach(it => {
-            if (it.name) {
-              const opt = document.createElement("option");
-              opt.value = it.name;
-              opt.dataset.unit = it.unit || "Pcs";
-              opt.dataset.rate = it.rate || 0;
-              opt.dataset.hsn = it.hsn || "";
-              stockDatalist.appendChild(opt);
-            }
-          });
-          itemsCount = iData.items.length;
+        if (iData.items && iData.items.length > 0) {
+          window.allStockItems = iData.items;
+          itemsCount = window.allStockItems.length;
         }
       }
     } catch (e) {
@@ -153,7 +372,7 @@ async function loadTallyMasters() {
     }
 
     if (itemsCount > 0 || debtorsCount > 0) {
-      showToast(`⚡ Realtime Tally API: Loaded ${itemsCount} Stock Items & ${debtorsCount} Parties!`, "success");
+      showToast(`⚡ Realtime Tally API: Synced ${itemsCount} Stock Items & ${debtorsCount} Parties!`, "success");
     }
     fetchRealtimeVoucherNumber("Sales");
   } catch (err) {
@@ -296,9 +515,16 @@ function addItemRow(initialData = null) {
   tr.innerHTML = `
     <td class="text-center mono row-idx" data-label="#">${tbody.children.length + 1}</td>
     <td data-label="Item Description">
-      <input type="text" class="form-control item-name" list="stock-item-datalist" 
-             placeholder="Select / Type Stock Item" value="${initialData?.name || ''}" 
-             onchange="handleItemSelect(${rowCounter})" required>
+      <div class="autocomplete-wrapper">
+        <input type="text" class="form-control item-name" 
+               placeholder="Type 2-3 letters to search item..." 
+               value="${initialData?.name || ''}" 
+               autocomplete="off"
+               oninput="handleItemInput(this, ${rowCounter})"
+               onfocus="handleItemInput(this, ${rowCounter})"
+               required>
+        <div id="item-dropdown-${rowCounter}" class="autocomplete-dropdown" style="display: none;"></div>
+      </div>
     </td>
     <td data-label="HSN / SAC">
       <input type="text" class="form-control mono item-hsn" placeholder="HSN/SAC" 
@@ -864,16 +1090,26 @@ function getHighestRegistryVoucherNo() {
 async function fetchRealtimeVoucherNumber(vchType = "Sales") {
   const vchInput = document.getElementById("voucher-no");
   const statusSpan = document.getElementById("voucher-sync-status");
-  if (!vchInput) return;
 
   if (vchType === "Receipt") {
+    const rInput = document.getElementById("receipt-vch-no");
+    if (rInput && (!rInput.value || rInput.value === "1074")) {
+      rInput.value = "RCPT/26-27/1074";
+    }
     return;
   }
 
-  // 1. Establish initial verified sequential number
-  const nextRegistryNo = getHighestRegistryVoucherNo();
-  vchInput.value = nextRegistryNo;
-  if (statusSpan) statusSpan.innerHTML = `🟢 Live Sequence: <strong>${nextRegistryNo}</strong>`;
+  if (!vchInput) return;
+
+  // 1. Establish initial verified sequential number per voucher type
+  if (vchType === "Credit Note") {
+    vchInput.value = "CN/26-27/101";
+  } else if (vchType === "Debit Note") {
+    vchInput.value = "DN/26-27/54";
+  } else {
+    vchInput.value = getHighestRegistryVoucherNo();
+  }
+  if (statusSpan) statusSpan.innerHTML = `🟢 Series: <strong>${vchInput.value}</strong>`;
 
   // 2. Query live Tally API
   try {

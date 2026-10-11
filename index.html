@@ -112,7 +112,10 @@
       <div class="grid-3" style="margin-top: 14px;">
         <div class="form-group">
           <label class="form-label">Customer / Party Name <span class="req">*</span></label>
-          <input type="text" class="form-control" id="receipt-party" list="party-suggestions" placeholder="e.g. The Eclair Bakery" onchange="handleReceiptPartyChange()">
+          <div class="autocomplete-wrapper">
+            <input type="text" class="form-control" id="receipt-party" placeholder="e.g. The Eclair Bakery" autocomplete="off" oninput="handleReceiptPartyInput(this)">
+            <div id="receipt-party-autocomplete-dropdown" class="autocomplete-dropdown" style="display: none;"></div>
+          </div>
           <small id="receipt-party-bal" style="font-size: 11px; color: var(--primary); font-weight: 600;"></small>
         </div>
         <div class="form-group">
@@ -202,10 +205,10 @@
       <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Party / Customer Name <span class="req">*</span></label>
-          <input type="text" class="form-control" id="party-name" list="party-suggestions" placeholder="Type customer name (e.g. The Eclair Bakery)" required onchange="handlePartyChange()">
-          <datalist id="party-suggestions">
-            <!-- Populated via Tally Masters -->
-          </datalist>
+          <div class="autocomplete-wrapper">
+            <input type="text" class="form-control" id="party-name" placeholder="Type customer name (e.g. The Eclair Bakery)" autocomplete="off" required oninput="handlePartyInput(this)">
+            <div id="party-autocomplete-dropdown" class="autocomplete-dropdown" style="display: none;"></div>
+          </div>
           <small id="party-current-bal" style="font-size: 11px; color: var(--primary); font-weight: 600;"></small>
         </div>
 
@@ -432,13 +435,13 @@
       <div class="modal-body">
         <div class="form-group" style="margin-bottom: 14px;">
           <label class="form-label">Tally Connector Gateway URL</label>
-          <input type="text" class="form-control" id="cfg-connector-url" value="https://competition-recovered-commented-nevada.trycloudflare.com/?key=infra_e35b972d8abf4487">
+          <input type="text" class="form-control" id="cfg-connector-url" value="https://attempts-celebrate-analyses-mambo.trycloudflare.com/?key=infra_e35b972d8abf4487">
           <small style="color: var(--text-muted); font-size: 11px;">Cloudflare Tunnel / Local Infralyzer gateway endpoint</small>
         </div>
 
         <div class="form-group" style="margin-bottom: 14px;">
           <label class="form-label">Tally Company Name</label>
-          <input type="text" class="form-control" id="cfg-company-name" value="nanakfoodmart">
+          <input type="text" class="form-control" id="cfg-company-name" value="Nanak Food Mart">
         </div>
 
         <div class="form-group" style="margin-bottom: 14px;">

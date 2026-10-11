@@ -22,7 +22,7 @@ import re
 import xml.etree.ElementTree as ET
 
 PORT = 8090
-DEFAULT_CONNECTOR_URL = "https://competition-recovered-commented-nevada.trycloudflare.com/?key=infra_e35b972d8abf4487"
+DEFAULT_CONNECTOR_URL = os.environ.get("TALLY_URL") or "https://attempts-celebrate-analyses-mambo.trycloudflare.com/?key=infra_e35b972d8abf4487"
 DEFAULT_COMPANY = "Nanak Food Mart"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
