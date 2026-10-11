@@ -13,11 +13,7 @@
   ],
   "routes": [
     {
-      "src": "/api/tally-proxy",
-      "dest": "/api/tally.js"
-    },
-    {
-      "src": "/api/tally",
+      "src": "/api/(.*)",
       "dest": "/api/tally.js"
     },
     {

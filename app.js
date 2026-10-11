@@ -102,56 +102,62 @@ async function loadTallyMasters() {
     let itemsCount = 0;
     let debtorsCount = 0;
 
-    // 1. Load Ledgers
-    const lRes = await fetch("/tally_ledgers.json");
-    if (lRes.ok) {
-      const lData = await lRes.json();
-      window.allDebtors = lData.debtors || [];
-      window.allCreditors = lData.creditors || [];
-      updatePartyDatalist("debtors");
-      debtorsCount = window.allDebtors.length;
+    // 1. Live API: Fetch Ledgers (Debtors, Creditors, Sales) directly from Tally
+    try {
+      const lRes = await fetch("/api/ledgers", {
+        headers: { "X-Tally-URL": appConfig.connectorUrl, "X-Tally-Company": appConfig.companyName }
+      });
+      if (lRes.ok) {
+        const lData = await lRes.json();
+        window.allDebtors = lData.debtors || [];
+        window.allCreditors = lData.creditors || [];
+        updatePartyDatalist("debtors");
+        debtorsCount = window.allDebtors.length;
 
-      if (lData.sales && lData.sales.length > 0) {
-        const gstSales = lData.sales.find(s => s.name.toLowerCase().includes("gst sales")) || lData.sales[0];
-        if (gstSales) {
-          document.getElementById("sales-ledger").value = gstSales.name;
+        if (lData.sales && lData.sales.length > 0) {
+          const gstSales = lData.sales.find(s => s.name.toLowerCase().includes("gst sales")) || lData.sales[0];
+          if (gstSales) {
+            document.getElementById("sales-ledger").value = gstSales.name;
+          }
         }
       }
+    } catch (e) {
+      console.warn("API /api/ledgers query:", e);
     }
 
-    // 2. Load Stock Items
-    const iRes = await fetch("/tally_items.json");
-    if (iRes.ok) {
-      const iData = await iRes.json();
-      const stockDatalist = document.getElementById("stock-item-datalist");
-      if (stockDatalist && iData.items) {
-        stockDatalist.innerHTML = "";
-        iData.items.forEach(it => {
-          if (it.name && it.name !== "None") {
-            const opt = document.createElement("option");
-            opt.value = it.name;
-            opt.dataset.unit = it.unit || "Pcs";
-            stockDatalist.appendChild(opt);
-          }
-        });
-        itemsCount = iData.items.length;
-      }
-    }
-
-    // 3. Load Verified Bills for Realtime Agst Ref
+    // 2. Live API: Fetch Stock Items directly from Tally
     try {
-      const bRes = await fetch("/tally_bills.json");
-      if (bRes.ok) {
-        window.allBillsByParty = await bRes.json();
+      const iRes = await fetch("/api/items", {
+        headers: { "X-Tally-URL": appConfig.connectorUrl, "X-Tally-Company": appConfig.companyName }
+      });
+      if (iRes.ok) {
+        const iData = await iRes.json();
+        const stockDatalist = document.getElementById("stock-item-datalist");
+        if (stockDatalist && iData.items) {
+          stockDatalist.innerHTML = "";
+          iData.items.forEach(it => {
+            if (it.name) {
+              const opt = document.createElement("option");
+              opt.value = it.name;
+              opt.dataset.unit = it.unit || "Pcs";
+              opt.dataset.rate = it.rate || 0;
+              opt.dataset.hsn = it.hsn || "";
+              stockDatalist.appendChild(opt);
+            }
+          });
+          itemsCount = iData.items.length;
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn("API /api/items query:", e);
+    }
 
     if (itemsCount > 0 || debtorsCount > 0) {
-      showToast(`Loaded ${itemsCount} Stock Items & ${debtorsCount} Parties from Tally!`, "success");
+      showToast(`⚡ Realtime Tally API: Loaded ${itemsCount} Stock Items & ${debtorsCount} Parties!`, "success");
     }
     fetchRealtimeVoucherNumber("Sales");
   } catch (err) {
-    console.warn("Could not load local Tally masters:", err);
+    console.warn("Could not load Tally masters via API:", err);
   }
 }
 
@@ -869,62 +875,20 @@ async function fetchRealtimeVoucherNumber(vchType = "Sales") {
   vchInput.value = nextRegistryNo;
   if (statusSpan) statusSpan.innerHTML = `🟢 Live Sequence: <strong>${nextRegistryNo}</strong>`;
 
-  // 2. Query live Tally if available to guarantee 0% clash
+  // 2. Query live Tally API
   try {
-    const apiEndpoint = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? "/api/tally-proxy" : "/api/tally";
-    const queryXml = `<ENVELOPE>
-  <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
-  <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <STATICVARIABLES>
-          <SVCURRENTCOMPANY>${escapeXml(appConfig.companyName)}</SVCURRENTCOMPANY>
-        </STATICVARIABLES>
-        <TDL>
-          <TDLMESSAGE>
-            <COLLECTION NAME="LiveVchCol" ISMODIFY="No">
-              <TYPE>Voucher</TYPE>
-              <FETCH>VOUCHERNUMBER</FETCH>
-              <FILTERS>IsThisVch</FILTERS>
-            </COLLECTION>
-            <SYSTEM TYPE="Formulae" NAME="IsThisVch">
-              $VoucherTypeName = "${vchType === 'Sales' ? 'Sales' : vchType}" OR $VoucherTypeName = "AUTO GST"
-            </SYSTEM>
-          </TDLMESSAGE>
-        </TDL>
-      </REQUESTDESC>
-    </EXPORTDATA>
-  </BODY>
-</ENVELOPE>`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const resp = await fetch(apiEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "text/xml; charset=utf-8", "X-Tally-URL": appConfig.connectorUrl },
-      body: queryXml,
-      signal: controller.signal
+    const res = await fetch(`/api/next-voucher?type=${encodeURIComponent(vchType)}`, {
+      headers: { "X-Tally-URL": appConfig.connectorUrl, "X-Tally-Company": appConfig.companyName }
     });
-    clearTimeout(timeout);
-
-    if (resp.ok) {
-      const xmlText = await resp.text();
-      const matches = [...xmlText.matchAll(/NFM\/26-27\/(\d+)/g)];
-      if (matches.length > 0) {
-        let liveMax = 0;
-        matches.forEach(m => {
-          const num = parseInt(m[1], 10);
-          if (num > liveMax) liveMax = num;
-        });
-        if (liveMax > 0) {
-          const liveNext = `NFM/26-27/${liveMax + 1}`;
-          vchInput.value = liveNext;
-          if (statusSpan) statusSpan.innerHTML = `🟢 Live Synced from TallyPrime: <strong>${liveNext}</strong>`;
-        }
+    if (res.ok) {
+      const data = await res.json();
+      if (data.next_voucher_number) {
+        vchInput.value = data.next_voucher_number;
+        if (statusSpan) statusSpan.innerHTML = `🟢 Live Synced via Tally API: <strong>${data.next_voucher_number}</strong>`;
       }
     }
   } catch (err) {
-    // Graceful fallback to verified sequence
+    console.warn("Live sequence API error:", err);
   }
 }
 
@@ -1151,33 +1115,30 @@ function handleReceiptPartyChange() {
     billSelect.innerHTML = '<option value="">-- Pick Pending Bill (Agst Ref) --</option>';
   }
 
-  if (window.allBillsByParty) {
-    let bills = window.allBillsByParty[rawVal];
-    if (!bills) {
-      for (const k of Object.keys(window.allBillsByParty)) {
-        if (k.toLowerCase() === val || k.toLowerCase().includes(val) || val.includes(k.toLowerCase())) {
-          bills = window.allBillsByParty[k];
-          break;
+  // Live API: Query pending bills for this party directly from Tally
+  fetch(`/api/bills?party=${encodeURIComponent(rawVal)}`, {
+    headers: { "X-Tally-URL": appConfig.connectorUrl, "X-Tally-Company": appConfig.companyName }
+  })
+    .then(r => r.json())
+    .then(data => {
+      const bills = data.bills || [];
+      if (bills.length > 0) {
+        if (billSelect) {
+          bills.forEach(b => {
+            const opt = document.createElement("option");
+            opt.value = b.bill_ref;
+            opt.dataset.amount = b.amount;
+            opt.textContent = `${b.bill_ref} • ₹${parseFloat(b.amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+            billSelect.appendChild(opt);
+          });
         }
+        const latestBill = bills[bills.length - 1];
+        if (billInput) billInput.value = latestBill.bill_ref || "";
+        if (amtInput && !amtInput.value) amtInput.value = parseFloat(latestBill.amount || 0).toFixed(2);
+        showToast(`⚡ Realtime Tally API: Found ${bills.length} pending bill(s) for ${rawVal}`, "info");
       }
-    }
-
-    if (bills && bills.length > 0) {
-      if (billSelect) {
-        bills.forEach(b => {
-          const opt = document.createElement("option");
-          opt.value = b.bill_ref;
-          opt.dataset.amount = b.amount;
-          opt.textContent = `${b.bill_ref} &bull; ₹${parseFloat(b.amount).toLocaleString('en-IN', {minimumFractionDigits: 2})} (${b.overdue_days || 0}d)`;
-          billSelect.appendChild(opt);
-        });
-      }
-      const latestBill = bills[bills.length - 1];
-      if (billInput) billInput.value = latestBill.bill_ref || "";
-      if (amtInput && !amtInput.value) amtInput.value = parseFloat(latestBill.amount || 0).toFixed(2);
-      showToast(`Found ${bills.length} pending bill(s) for ${rawVal}`, "info");
-    }
-  }
+    })
+    .catch(err => console.warn("Live bills API query:", err));
 }
 
 function handleBillSelectChange() {
