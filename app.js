@@ -95,6 +95,8 @@ function updatePartyDatalist(type = "debtors") {
   });
 }
 
+window.allBillsByParty = {};
+
 async function loadTallyMasters() {
   try {
     let itemsCount = 0;
@@ -135,6 +137,14 @@ async function loadTallyMasters() {
         itemsCount = iData.items.length;
       }
     }
+
+    // 3. Load Verified Bills for Realtime Agst Ref
+    try {
+      const bRes = await fetch("/tally_bills.json");
+      if (bRes.ok) {
+        window.allBillsByParty = await bRes.json();
+      }
+    } catch (e) {}
 
     if (itemsCount > 0 || debtorsCount > 0) {
       showToast(`Loaded ${itemsCount} Stock Items & ${debtorsCount} Parties from Tally!`, "success");
@@ -883,18 +893,87 @@ async function pushVoucherToTally() {
 // CASH RECEIPT VOUCHER ENGINE (Agst Ref Settlement)
 // =========================================================================
 
-function handleReceiptPartyChange() {
-  const partyInput = document.getElementById("receipt-party");
-  const balSpan = document.getElementById("receipt-party-bal");
+function handlePartyChange() {
+  const partyInput = document.getElementById("party-name");
+  const balSpan = document.getElementById("party-current-bal");
   if (!partyInput || !balSpan) return;
 
   const val = partyInput.value.trim().toLowerCase();
-  const party = window.allDebtors.find(d => d.name.toLowerCase() === val);
-  if (party && party.balance) {
-    const balNum = parseFloat(party.balance) || 0;
-    balSpan.textContent = `Current Ledger Balance: ₹${Math.abs(balNum).toLocaleString('en-IN', {minimumFractionDigits: 2})} ${balNum >= 0 ? 'Dr (Baaki)' : 'Cr (Advance)'}`;
-  } else {
+  if (!val) {
     balSpan.textContent = "";
+    return;
+  }
+
+  const list = appConfig.voucherType === "Debit Note" ? window.allCreditors : window.allDebtors;
+  const party = list.find(d => d.name.toLowerCase() === val);
+
+  if (party) {
+    const balNum = parseFloat(party.balance) || 0;
+    balSpan.textContent = `Current Balance: ₹${Math.abs(balNum).toLocaleString('en-IN', {minimumFractionDigits: 2})} ${balNum >= 0 ? 'Dr (Baaki)' : 'Cr (Advance)'}`;
+    balSpan.style.color = "var(--primary)";
+  } else {
+    balSpan.textContent = "✨ New Party (Will be created in Tally)";
+    balSpan.style.color = "var(--success)";
+  }
+
+  // Auto-refresh Old Rate for any already entered items
+  document.querySelectorAll("#items-tbody tr").forEach(r => {
+    const nameInput = r.querySelector(".item-name");
+    const itemVal = nameInput ? nameInput.value.trim() : "";
+    if (itemVal) {
+      const oldRate = getPartyLastRate(partyInput.value.trim(), itemVal);
+      if (oldRate) {
+        const rateInput = r.querySelector(".item-rate");
+        if (rateInput) rateInput.value = oldRate.toFixed(2);
+        let badge = r.querySelector(".last-rate-badge");
+        if (!badge && rateInput) {
+          badge = document.createElement("div");
+          badge.className = "last-rate-badge";
+          rateInput.parentNode.appendChild(badge);
+        }
+        if (badge) badge.innerHTML = `🏷️ Old Rate: ₹${oldRate.toFixed(2)}`;
+      }
+    }
+  });
+
+  recalculateTotals();
+}
+
+function handleReceiptPartyChange() {
+  const partyInput = document.getElementById("receipt-party");
+  const balSpan = document.getElementById("receipt-party-bal");
+  const billInput = document.getElementById("receipt-bill-ref");
+  const amtInput = document.getElementById("receipt-amount");
+  if (!partyInput) return;
+
+  const rawVal = partyInput.value.trim();
+  const val = rawVal.toLowerCase();
+  const party = window.allDebtors.find(d => d.name.toLowerCase() === val);
+  if (party && party.balance && balSpan) {
+    const balNum = parseFloat(party.balance) || 0;
+    balSpan.textContent = `Current Balance: ₹${Math.abs(balNum).toLocaleString('en-IN', {minimumFractionDigits: 2})} ${balNum >= 0 ? 'Dr (Baaki)' : 'Cr (Advance)'}`;
+  } else if (balSpan) {
+    balSpan.textContent = "";
+  }
+
+  // Auto-fetch latest unpaid bill for this party
+  if (window.allBillsByParty) {
+    let bills = window.allBillsByParty[rawVal];
+    if (!bills) {
+      for (const k of Object.keys(window.allBillsByParty)) {
+        if (k.toLowerCase() === val || k.toLowerCase().includes(val) || val.includes(k.toLowerCase())) {
+          bills = window.allBillsByParty[k];
+          break;
+        }
+      }
+    }
+
+    if (bills && bills.length > 0) {
+      const latestBill = bills[bills.length - 1];
+      if (billInput) billInput.value = latestBill.bill_ref || "";
+      if (amtInput && !amtInput.value) amtInput.value = parseFloat(latestBill.amount || 0).toFixed(2);
+      showToast(`Auto-fetched pending Bill ${latestBill.bill_ref} (₹${latestBill.amount})`, "info");
+    }
   }
 }
 

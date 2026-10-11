@@ -143,102 +143,66 @@
         </span>
       </div>
 
-      <div class="grid-4">
+      <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Voucher Number <span class="req">*</span></label>
-          <input type="text" class="form-control mono" id="voucher-no" value="INV-2026-001" required>
+          <input type="text" class="form-control mono" id="voucher-no" value="NFM/26-27/13653" required>
         </div>
 
         <div class="form-group">
           <label class="form-label">Voucher Date <span class="req">*</span></label>
           <input type="date" class="form-control" id="voucher-date" required>
         </div>
-
-        <div class="form-group">
-          <label class="form-label">Place of Supply (State) <span class="req">*</span></label>
-          <select class="form-control" id="place-of-supply" onchange="recalculateTotals()">
-            <!-- Populated via JS -->
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Sales / Account Ledger <span class="req">*</span></label>
-          <input type="text" class="form-control" id="sales-ledger" value="Sales Account" placeholder="e.g. Sales Account">
-        </div>
       </div>
 
+      <!-- Hidden standard system fields -->
+      <input type="hidden" id="place-of-supply" value="07">
+      <input type="hidden" id="sales-ledger" value="Gst Sales">
+
       <!-- Credit / Debit Note Reference Section (Hidden on Sales) -->
-      <div id="cr-dr-ref-container" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border-color);">
-        <div class="grid-3">
+      <div id="cr-dr-ref-container" style="display: none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--border-color);">
+        <div class="grid-2">
           <div class="form-group">
-            <label class="form-label">Original Invoice No <span class="req">*</span></label>
-            <input type="text" class="form-control mono" id="orig-invoice-no" placeholder="e.g. INV-2026-001">
+            <label class="form-label">Original Invoice No</label>
+            <input type="text" class="form-control mono" id="orig-invoice-no" placeholder="e.g. NFM/26-27/13254">
           </div>
           <div class="form-group">
-            <label class="form-label">Original Invoice Date <span class="req">*</span></label>
+            <label class="form-label">Original Invoice Date</label>
             <input type="date" class="form-control" id="orig-invoice-date">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Reason for Note <span class="req">*</span></label>
-            <select class="form-control" id="note-reason">
-              <option value="01-Sales Return">01 - Sales Return</option>
-              <option value="02-Post Sale Discount">02 - Post Sale Discount</option>
-              <option value="03-Deficiency in services">03 - Deficiency in services</option>
-              <option value="04-Correction in Invoice">04 - Correction in Invoice</option>
-              <option value="05-Change in POS">05 - Change in POS</option>
-              <option value="06-Finalization of Provisional Assessment">06 - Finalization of Provisional Assessment</option>
-              <option value="07-Others">07 - Others</option>
-            </select>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Party / Buyer Details -->
+    <!-- Party / Customer Details (Minimal) -->
     <section class="form-card" id="party-card">
       <div class="card-header-bar">
         <div class="card-title">
           <span class="card-title-icon">👤</span>
-          <span>Party (Buyer / Debtor) Details</span>
-        </div>
-        <div style="font-size: 12px; color: var(--text-muted);">
-          GST Type: <strong id="lbl-gst-type" style="color: var(--sales-color);">CGST + SGST (Intra-State)</strong>
+          <span>Customer / Party Details</span>
         </div>
       </div>
 
-      <div class="grid-3">
+      <div class="grid-2">
         <div class="form-group">
-          <label class="form-label">Party / Buyer Ledger Name <span class="req">*</span></label>
-          <input type="text" class="form-control" id="party-name" list="party-suggestions" placeholder="e.g. Sharma Grocery Store" required>
+          <label class="form-label">Party / Customer Name <span class="req">*</span></label>
+          <input type="text" class="form-control" id="party-name" list="party-suggestions" placeholder="Type customer name (e.g. The Eclair Bakery)" required onchange="handlePartyChange()">
           <datalist id="party-suggestions">
-            <option value="Sharma Grocery Store">
-            <option value="Gupta Traders">
-            <option value="Agarwal Mega Mart">
-            <option value="Cash / Retail Customer">
+            <!-- Populated via Tally Masters -->
           </datalist>
+          <small id="party-current-bal" style="font-size: 11px; color: var(--primary); font-weight: 600;"></small>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Buyer GSTIN / UIN</label>
-          <input type="text" class="form-control mono" id="party-gstin" maxlength="15" placeholder="07AAAAA0000A1Z5" oninput="handleGstinInput()">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Party Contact / Phone</label>
-          <input type="text" class="form-control" id="party-phone" placeholder="+91 98765 43210">
+          <label class="form-label">Party Mobile / Phone (Optional)</label>
+          <input type="text" class="form-control" id="party-phone" placeholder="e.g. 9876543210">
         </div>
       </div>
 
-      <div class="grid-2" style="margin-top: 14px;">
-        <div class="form-group">
-          <label class="form-label">Billing Address</label>
-          <input type="text" class="form-control" id="party-billing-address" placeholder="Shop No. 12, Main Market, Delhi">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Shipping / Delivery Address</label>
-          <input type="text" class="form-control" id="party-shipping-address" placeholder="Same as billing address">
-        </div>
-      </div>
+      <!-- Hidden optional fields for compatibility -->
+      <input type="hidden" id="party-gstin" value="">
+      <input type="hidden" id="party-billing-address" value="">
+      <input type="hidden" id="party-shipping-address" value="">
     </section>
 
     <!-- Items / Inventory Grid -->
@@ -333,13 +297,7 @@
           <span class="mono" id="igst-val">₹0.00</span>
         </div>
 
-        <div class="totals-row">
-          <span>Freight / Shipping Charges:</span>
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <span>₹</span>
-            <input type="number" class="form-control mono text-right" id="freight-charges" value="0.00" step="1" style="width: 100px; padding: 4px 6px;" oninput="recalculateTotals()">
-          </div>
-        </div>
+        <input type="hidden" id="freight-charges" value="0">
 
         <div class="totals-row">
           <span>Round Off:</span>
@@ -358,17 +316,12 @@
 
     </section>
 
-    <!-- Narration / Terms -->
-    <section class="form-card" id="narration-card" style="margin-top: 24px;">
-      <div class="grid-2">
-        <div class="form-group">
-          <label class="form-label">Voucher Narration / Remarks</label>
-          <textarea class="form-control" id="voucher-narration" rows="2" placeholder="e.g. Goods sold subject to terms and conditions."></textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Terms of Delivery / Payment</label>
-          <textarea class="form-control" id="voucher-terms" rows="2" placeholder="e.g. Payment due within 15 days of invoice date."></textarea>
-        </div>
+    <!-- Narration (Minimal) -->
+    <section class="form-card" id="narration-card" style="margin-top: 16px;">
+      <div class="form-group">
+        <label class="form-label">Narration / Remarks (Optional)</label>
+        <input type="text" class="form-control" id="voucher-narration" placeholder="e.g. Being goods sold">
+        <input type="hidden" id="voucher-terms" value="">
       </div>
     </section>
 
