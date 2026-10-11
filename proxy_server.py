@@ -26,7 +26,7 @@ DEFAULT_CONNECTOR_URL = os.environ.get("TALLY_URL") or "https://attempts-celebra
 DEFAULT_COMPANY = "Nanak Food Mart"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def post_to_tally(xml_payload, target_url=DEFAULT_CONNECTOR_URL, timeout=12):
+def post_to_tally(xml_payload, target_url=DEFAULT_CONNECTOR_URL, timeout=45):
     """Sends raw TDL XML to Tally and returns response text."""
     req = urllib.request.Request(
         target_url,
