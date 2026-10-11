@@ -1,0 +1,1205 @@
+/**
+ * TallyPrime Smart Billing Suite
+ * Sales Voucher, Credit Note & Debit Note Generation and Tally Gateway Client
+ */
+
+// 1. Indian States & GST Codes
+const INDIAN_STATES = [
+  { code: "01", name: "Jammu and Kashmir" },
+  { code: "02", name: "Himachal Pradesh" },
+  { code: "03", name: "Punjab" },
+  { code: "04", name: "Chandigarh" },
+  { code: "05", name: "Uttarakhand" },
+  { code: "06", name: "Haryana" },
+  { code: "07", name: "Delhi" },
+  { code: "08", name: "Rajasthan" },
+  { code: "09", name: "Uttar Pradesh" },
+  { code: "10", name: "Bihar" },
+  { code: "19", name: "West Bengal" },
+  { code: "23", name: "Madhya Pradesh" },
+  { code: "24", name: "Gujarat" },
+  { code: "27", name: "Maharashtra" },
+  { code: "29", name: "Karnataka" },
+  { code: "32", name: "Kerala" },
+  { code: "33", name: "Tamil Nadu" },
+  { code: "36", name: "Telangana" },
+  { code: "37", name: "Andhra Pradesh" },
+  { code: "97", name: "Other Territory" }
+];
+
+// 2. Default Configuration & State
+const appConfig = {
+  connectorUrl: "https://competition-recovered-commented-nevada.trycloudflare.com/?key=infra_e35b972d8abf4487",
+  companyName: "Nanak Food Mart",
+  companyGstin: "07AAAAA0000A1Z5",
+  companyStateCode: "07",
+  companyAddress: "Shop 4, Market Complex, Delhi - 110001",
+  voucherType: "Sales" // "Sales", "Credit Note", "Debit Note"
+};
+
+let rowCounter = 0;
+
+// Initialize on Load
+document.addEventListener("DOMContentLoaded", () => {
+  initStates();
+  initDefaults();
+  addItemRow(); // Default initial row
+  loadTallyMasters(); // Load 2005 Stock Items and 1133 Party Ledgers
+  checkConnectorStatus();
+  setInterval(checkConnectorStatus, 20000); // 20s heartbeat
+});
+
+window.allDebtors = [];
+window.allCreditors = [];
+
+// Pre-seeded price memory from Nanak Food Mart vouchers
+const DEFAULT_PRICE_MEM = {
+  "kay sons oils pvt. ltd.:::dr.smith black olive 680ml": 107.61,
+  "deepak quality bakery:::hamper box transparant lid 10*10": 296.61,
+  "the eclair bakery:::hamper box transparant lid 10*10": 296.61,
+  "mvr grand hotel llp:::hamper box transparant lid 10*10": 296.61
+};
+
+function getPartyLastRate(party, item) {
+  if (!party || !item) return null;
+  const key = `${party.toLowerCase().trim()}:::${item.toLowerCase().trim()}`;
+  try {
+    const memory = JSON.parse(localStorage.getItem("NFM_PRICE_MEMORY") || "{}");
+    if (memory[key]) return memory[key];
+  } catch (e) {}
+  return DEFAULT_PRICE_MEM[key] || null;
+}
+
+function savePartyLastRate(party, item, rate) {
+  if (!party || !item || !rate) return;
+  const key = `${party.toLowerCase().trim()}:::${item.toLowerCase().trim()}`;
+  try {
+    const memory = JSON.parse(localStorage.getItem("NFM_PRICE_MEMORY") || "{}");
+    memory[key] = parseFloat(rate);
+    localStorage.setItem("NFM_PRICE_MEMORY", JSON.stringify(memory));
+  } catch (e) {}
+}
+
+function updatePartyDatalist(type = "debtors") {
+  const partyDatalist = document.getElementById("party-suggestions");
+  if (!partyDatalist) return;
+  partyDatalist.innerHTML = "";
+  const list = type === "creditors" ? window.allCreditors : window.allDebtors;
+  list.forEach(p => {
+    if (p.name) {
+      const opt = document.createElement("option");
+      opt.value = p.name;
+      opt.dataset.balance = p.balance || "0.00";
+      partyDatalist.appendChild(opt);
+    }
+  });
+}
+
+async function loadTallyMasters() {
+  try {
+    let itemsCount = 0;
+    let debtorsCount = 0;
+
+    // 1. Load Ledgers
+    const lRes = await fetch("/tally_ledgers.json");
+    if (lRes.ok) {
+      const lData = await lRes.json();
+      window.allDebtors = lData.debtors || [];
+      window.allCreditors = lData.creditors || [];
+      updatePartyDatalist("debtors");
+      debtorsCount = window.allDebtors.length;
+
+      if (lData.sales && lData.sales.length > 0) {
+        const gstSales = lData.sales.find(s => s.name.toLowerCase().includes("gst sales")) || lData.sales[0];
+        if (gstSales) {
+          document.getElementById("sales-ledger").value = gstSales.name;
+        }
+      }
+    }
+
+    // 2. Load Stock Items
+    const iRes = await fetch("/tally_items.json");
+    if (iRes.ok) {
+      const iData = await iRes.json();
+      const stockDatalist = document.getElementById("stock-item-datalist");
+      if (stockDatalist && iData.items) {
+        stockDatalist.innerHTML = "";
+        iData.items.forEach(it => {
+          if (it.name && it.name !== "None") {
+            const opt = document.createElement("option");
+            opt.value = it.name;
+            opt.dataset.unit = it.unit || "Pcs";
+            stockDatalist.appendChild(opt);
+          }
+        });
+        itemsCount = iData.items.length;
+      }
+    }
+
+    if (itemsCount > 0 || debtorsCount > 0) {
+      showToast(`Loaded ${itemsCount} Stock Items & ${debtorsCount} Parties from Tally!`, "success");
+    }
+  } catch (err) {
+    console.warn("Could not load local Tally masters:", err);
+  }
+}
+
+function initStates() {
+  const posSelect = document.getElementById("place-of-supply");
+  const cfgStateSelect = document.getElementById("cfg-company-state");
+
+  posSelect.innerHTML = "";
+  cfgStateSelect.innerHTML = "";
+
+  INDIAN_STATES.forEach(st => {
+    const opt1 = document.createElement("option");
+    opt1.value = st.code;
+    opt1.textContent = `${st.code} - ${st.name}`;
+    posSelect.appendChild(opt1);
+
+    const opt2 = document.createElement("option");
+    opt2.value = st.code;
+    opt2.textContent = `${st.code} - ${st.name}`;
+    cfgStateSelect.appendChild(opt2);
+  });
+
+  posSelect.value = appConfig.companyStateCode;
+  cfgStateSelect.value = appConfig.companyStateCode;
+}
+
+function initDefaults() {
+  const today = new Date().toISOString().split("T")[0];
+  document.getElementById("voucher-date").value = today;
+  document.getElementById("lbl-active-company").textContent = appConfig.companyName;
+  updatePrintHeader();
+}
+
+function updatePrintHeader() {
+  document.getElementById("print-company-name").textContent = appConfig.companyName.toUpperCase();
+  document.getElementById("print-company-address").textContent = 
+    `GSTIN: ${appConfig.companyGstin} | State: ${getStateName(appConfig.companyStateCode)} (${appConfig.companyStateCode})`;
+}
+
+function getStateName(code) {
+  const st = INDIAN_STATES.find(s => s.code === code);
+  return st ? st.name : "Delhi";
+}
+
+// =========================================================================
+// VOUCHER TYPE TOGGLING (Sales, Receipt, Credit Note, Debit Note)
+// =========================================================================
+
+function setVoucherType(type) {
+  appConfig.voucherType = type;
+
+  // Update pills
+  document.querySelectorAll(".voucher-pill").forEach(p => {
+    if (p.getAttribute("data-type") === type) {
+      p.classList.add("active");
+    } else {
+      p.classList.remove("active");
+    }
+  });
+
+  const heading = document.getElementById("voucher-heading");
+  const crDrContainer = document.getElementById("cr-dr-ref-container");
+  const printTitle = document.getElementById("print-voucher-title");
+  const salesLedgerInput = document.getElementById("sales-ledger");
+
+  const receiptCard = document.getElementById("receipt-card");
+  const invoiceDetailsCard = document.getElementById("invoice-details-card");
+  const partyCard = document.getElementById("party-card");
+  const itemsCard = document.getElementById("items-card");
+  const summaryCard = document.getElementById("summary-card");
+  const narrationCard = document.getElementById("narration-card");
+  const actionsFooter = document.getElementById("actions-footer");
+  const mobileBar = document.getElementById("mobile-sticky-bar");
+
+  if (type === "Receipt") {
+    if (receiptCard) receiptCard.style.display = "block";
+    if (invoiceDetailsCard) invoiceDetailsCard.style.display = "none";
+    if (partyCard) partyCard.style.display = "none";
+    if (itemsCard) itemsCard.style.display = "none";
+    if (summaryCard) summaryCard.style.display = "none";
+    if (narrationCard) narrationCard.style.display = "none";
+    if (actionsFooter) actionsFooter.style.display = "none";
+    if (mobileBar) mobileBar.style.display = "none";
+
+    const rDate = document.getElementById("receipt-date");
+    if (rDate && !rDate.value) rDate.value = new Date().toISOString().split("T")[0];
+    showToast("Switched to Cash Receipt Entry", "info");
+    return;
+  }
+
+  // Invoice / Notes: Show standard cards
+  if (receiptCard) receiptCard.style.display = "none";
+  if (invoiceDetailsCard) invoiceDetailsCard.style.display = "block";
+  if (partyCard) partyCard.style.display = "block";
+  if (itemsCard) itemsCard.style.display = "block";
+  if (summaryCard) summaryCard.style.display = "grid";
+  if (narrationCard) narrationCard.style.display = "block";
+  if (actionsFooter) actionsFooter.style.display = "flex";
+  if (mobileBar) mobileBar.style.display = "flex";
+
+  if (type === "Sales") {
+    heading.textContent = "Tax Invoice Details";
+    crDrContainer.style.display = "none";
+    printTitle.textContent = "TAX INVOICE";
+    salesLedgerInput.value = "Gst Sales";
+    updatePartyDatalist("debtors");
+  } else if (type === "Credit Note") {
+    heading.textContent = "Credit Note Details (Sales Return)";
+    crDrContainer.style.display = "block";
+    printTitle.textContent = "CREDIT NOTE (SALES RETURN)";
+    salesLedgerInput.value = "Gst Sales";
+    updatePartyDatalist("debtors");
+  } else if (type === "Debit Note") {
+    heading.textContent = "Debit Note Details (Purchase Return)";
+    crDrContainer.style.display = "block";
+    printTitle.textContent = "DEBIT NOTE (PURCHASE RETURN)";
+    salesLedgerInput.value = "GST PURCHASE";
+    updatePartyDatalist("creditors");
+  }
+
+  recalculateTotals();
+  showToast(`Switched to ${type}`, "info");
+}
+
+// =========================================================================
+// INVENTORY ROW MANAGEMENT
+// =========================================================================
+
+function addItemRow(initialData = null) {
+  rowCounter++;
+  const tbody = document.getElementById("items-tbody");
+  const tr = document.createElement("tr");
+  tr.id = `item-row-${rowCounter}`;
+
+  tr.innerHTML = `
+    <td class="text-center mono row-idx">${tbody.children.length + 1}</td>
+    <td>
+      <input type="text" class="form-control item-name" list="stock-item-datalist" 
+             placeholder="Select / Type Stock Item" value="${initialData?.name || ''}" 
+             onchange="handleItemSelect(${rowCounter})" required>
+    </td>
+    <td>
+      <input type="text" class="form-control mono item-hsn" placeholder="HSN/SAC" 
+             value="${initialData?.hsn || ''}" oninput="recalculateTotals()">
+    </td>
+    <td>
+      <input type="number" class="form-control mono text-right item-qty" min="1" step="any" 
+             value="${initialData?.qty || 1}" oninput="recalculateTotals()">
+    </td>
+    <td>
+      <input type="text" class="form-control item-unit" placeholder="Unit" 
+             value="${initialData?.unit || 'PCS'}" oninput="recalculateTotals()">
+    </td>
+    <td>
+      <input type="number" class="form-control mono text-right item-rate" min="0" step="0.01" 
+             value="${initialData?.rate || '0.00'}" oninput="recalculateTotals()">
+    </td>
+    <td>
+      <input type="number" class="form-control mono text-right item-disc" min="0" max="100" step="0.1" 
+             value="${initialData?.discount || '0.00'}" oninput="recalculateTotals()">
+    </td>
+    <td class="text-right mono item-taxable">₹0.00</td>
+    <td>
+      <select class="form-control item-gst" onchange="recalculateTotals()">
+        <option value="0" ${initialData?.gst === 0 ? 'selected' : ''}>0%</option>
+        <option value="5" ${initialData?.gst === 5 ? 'selected' : ''}>5%</option>
+        <option value="12" ${initialData?.gst === 12 ? 'selected' : ''}>12%</option>
+        <option value="18" ${initialData?.gst === 18 || !initialData ? 'selected' : ''}>18%</option>
+        <option value="28" ${initialData?.gst === 28 ? 'selected' : ''}>28%</option>
+      </select>
+    </td>
+    <td class="text-right mono item-tax-amt">₹0.00</td>
+    <td class="text-right mono item-total-amt">₹0.00</td>
+    <td class="text-center no-print">
+      <button class="btn btn-danger-outline" onclick="removeItemRow(${rowCounter})" title="Delete Line">&times;</button>
+    </td>
+  `;
+
+  tbody.appendChild(tr);
+  updateRowIndices();
+  recalculateTotals();
+}
+
+function removeItemRow(id) {
+  const row = document.getElementById(`item-row-${id}`);
+  if (row) {
+    const tbody = document.getElementById("items-tbody");
+    if (tbody.children.length <= 1) {
+      showToast("Invoice must contain at least 1 item", "error");
+      return;
+    }
+    row.remove();
+    updateRowIndices();
+    recalculateTotals();
+  }
+}
+
+function updateRowIndices() {
+  const rows = document.querySelectorAll("#items-tbody tr");
+  rows.forEach((r, idx) => {
+    const idxCell = r.querySelector(".row-idx");
+    if (idxCell) idxCell.textContent = idx + 1;
+  });
+  document.getElementById("row-count-label").textContent = `${rows.length} ${rows.length === 1 ? 'Item' : 'Items'}`;
+}
+
+// Auto-fill HSN, Unit, Rate, GST when datalist item is selected
+function handleItemSelect(rowId) {
+  const row = document.getElementById(`item-row-${rowId}`);
+  if (!row) return;
+
+  const nameInput = row.querySelector(".item-name");
+  const val = nameInput.value.trim();
+
+  const datalist = document.getElementById("stock-item-datalist");
+  const option = Array.from(datalist.options).find(o => o.value.toLowerCase() === val.toLowerCase());
+
+  if (option) {
+    if (option.dataset.hsn) row.querySelector(".item-hsn").value = option.dataset.hsn;
+    if (option.dataset.unit) row.querySelector(".item-unit").value = option.dataset.unit;
+    if (option.dataset.rate) row.querySelector(".item-rate").value = option.dataset.rate;
+    if (option.dataset.gst) row.querySelector(".item-gst").value = option.dataset.gst;
+  }
+
+  // Check Party-wise Last Sold Rate (Price Memory)
+  const partyName = document.getElementById("party-name")?.value.trim() || "";
+  const oldRate = getPartyLastRate(partyName, val);
+  const rateInput = row.querySelector(".item-rate");
+  
+  if (oldRate && rateInput) {
+    rateInput.value = oldRate.toFixed(2);
+    let badge = row.querySelector(".last-rate-badge");
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.className = "last-rate-badge";
+      rateInput.parentNode.appendChild(badge);
+    }
+    badge.innerHTML = `🏷️ Old Rate: ₹${oldRate.toFixed(2)}`;
+    badge.title = "Pichla rate auto-apply ho gaya hai";
+  }
+
+  recalculateTotals();
+}
+
+// Auto-extract state code when GSTIN is typed
+function handleGstinInput() {
+  const gstin = document.getElementById("party-gstin").value.trim().toUpperCase();
+  if (gstin.length >= 2) {
+    const stateCode = gstin.substring(0, 2);
+    const posSelect = document.getElementById("place-of-supply");
+    if (Array.from(posSelect.options).some(o => o.value === stateCode)) {
+      posSelect.value = stateCode;
+      recalculateTotals();
+    }
+  }
+}
+
+// =========================================================================
+// GST RULES & FINANCIAL TOTALS CALCULATION
+// =========================================================================
+
+function recalculateTotals() {
+  const placeOfSupply = document.getElementById("place-of-supply").value;
+  const isIntraState = (placeOfSupply === appConfig.companyStateCode);
+
+  // Update GST label indicator
+  const gstLabel = document.getElementById("lbl-gst-type");
+  if (isIntraState) {
+    gstLabel.textContent = "CGST + SGST (Intra-State)";
+    gstLabel.style.color = "var(--sales-color)";
+    document.getElementById("row-cgst").style.display = "flex";
+    document.getElementById("row-sgst").style.display = "flex";
+    document.getElementById("row-igst").style.display = "none";
+    document.getElementById("th-cgst").style.display = "";
+    document.getElementById("th-sgst").style.display = "";
+    document.getElementById("th-igst").style.display = "none";
+  } else {
+    gstLabel.textContent = "IGST (Inter-State)";
+    gstLabel.style.color = "var(--primary)";
+    document.getElementById("row-cgst").style.display = "none";
+    document.getElementById("row-sgst").style.display = "none";
+    document.getElementById("row-igst").style.display = "flex";
+    document.getElementById("th-cgst").style.display = "none";
+    document.getElementById("th-sgst").style.display = "none";
+    document.getElementById("th-igst").style.display = "";
+  }
+
+  let totalTaxable = 0;
+  let totalCgst = 0;
+  let totalSgst = 0;
+  let totalIgst = 0;
+
+  const hsnMap = {}; // hsn -> { taxable, gstRate, cgst, sgst, igst }
+
+  const rows = document.querySelectorAll("#items-tbody tr");
+  rows.forEach(r => {
+    const qty = parseFloat(r.querySelector(".item-qty")?.value) || 0;
+    const rate = parseFloat(r.querySelector(".item-rate")?.value) || 0;
+    const discPercent = parseFloat(r.querySelector(".item-disc")?.value) || 0;
+    const gstRate = parseFloat(r.querySelector(".item-gst")?.value) || 0;
+    const hsn = (r.querySelector(".item-hsn")?.value.trim()) || "N/A";
+
+    // Taxable amount
+    const gross = qty * rate;
+    const discount = (gross * discPercent) / 100;
+    const taxable = Math.max(0, gross - discount);
+
+    // Tax amounts
+    let itemTax = 0;
+    let cgst = 0;
+    let sgst = 0;
+    let igst = 0;
+
+    if (isIntraState) {
+      cgst = (taxable * (gstRate / 2)) / 100;
+      sgst = (taxable * (gstRate / 2)) / 100;
+      itemTax = cgst + sgst;
+    } else {
+      igst = (taxable * gstRate) / 100;
+      itemTax = igst;
+    }
+
+    const itemTotal = taxable + itemTax;
+
+    // Update row DOM cells
+    r.querySelector(".item-taxable").textContent = `₹${taxable.toFixed(2)}`;
+    r.querySelector(".item-tax-amt").textContent = `₹${itemTax.toFixed(2)}`;
+    r.querySelector(".item-total-amt").textContent = `₹${itemTotal.toFixed(2)}`;
+
+    totalTaxable += taxable;
+    totalCgst += cgst;
+    totalSgst += sgst;
+    totalIgst += igst;
+
+    // Accumulate HSN summary
+    if (!hsnMap[hsn]) {
+      hsnMap[hsn] = { hsn, taxable: 0, gstRate, cgst: 0, sgst: 0, igst: 0, totalTax: 0 };
+    }
+    hsnMap[hsn].taxable += taxable;
+    hsnMap[hsn].cgst += cgst;
+    hsnMap[hsn].sgst += sgst;
+    hsnMap[hsn].igst += igst;
+    hsnMap[hsn].totalTax += itemTax;
+  });
+
+  // Freight & Round Off
+  const freight = parseFloat(document.getElementById("freight-charges").value) || 0;
+  const rawGrandTotal = totalTaxable + totalCgst + totalSgst + totalIgst + freight;
+  const roundedGrandTotal = Math.round(rawGrandTotal);
+  const roundOff = roundedGrandTotal - rawGrandTotal;
+
+  // Update Summary Box
+  document.getElementById("subtotal-val").textContent = `₹${totalTaxable.toFixed(2)}`;
+  document.getElementById("cgst-val").textContent = `₹${totalCgst.toFixed(2)}`;
+  document.getElementById("sgst-val").textContent = `₹${totalSgst.toFixed(2)}`;
+  document.getElementById("igst-val").textContent = `₹${totalIgst.toFixed(2)}`;
+  document.getElementById("round-off-val").textContent = `${roundOff >= 0 ? '+' : ''}₹${roundOff.toFixed(2)}`;
+  document.getElementById("grand-total-val").textContent = `₹${roundedGrandTotal.toFixed(2)}`;
+
+  document.getElementById("amount-in-words").textContent = `Amount in words: ${numberToIndianWords(roundedGrandTotal)} Only`;
+
+  // Update Mobile Sticky Bar
+  const mbTotal = document.getElementById("mobile-bar-total");
+  const mbCount = document.getElementById("mobile-bar-count");
+  if (mbTotal) mbTotal.textContent = `₹${roundedGrandTotal.toFixed(2)}`;
+  if (mbCount) {
+    const rows = document.querySelectorAll("#items-tbody tr");
+    mbCount.textContent = `${rows.length} ${rows.length === 1 ? 'Item' : 'Items'}`;
+  }
+
+  // Render HSN Table
+  renderHsnTable(hsnMap, isIntraState);
+}
+
+function renderHsnTable(hsnMap, isIntraState) {
+  const tbody = document.getElementById("hsn-summary-tbody");
+  tbody.innerHTML = "";
+  const keys = Object.keys(hsnMap);
+  document.getElementById("hsn-count-badge").textContent = `${keys.length} HSN${keys.length === 1 ? '' : 's'}`;
+
+  if (keys.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color: var(--text-muted);">No items added yet</td></tr>`;
+    return;
+  }
+
+  keys.forEach(k => {
+    const d = hsnMap[k];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="mono">${d.hsn}</td>
+      <td class="text-right mono">₹${d.taxable.toFixed(2)}</td>
+      ${isIntraState ? `
+        <td class="text-right mono">₹${d.cgst.toFixed(2)} <span style="font-size:10px;color:var(--text-muted);">(${d.gstRate / 2}%)</span></td>
+        <td class="text-right mono">₹${d.sgst.toFixed(2)} <span style="font-size:10px;color:var(--text-muted);">(${d.gstRate / 2}%)</span></td>
+      ` : `
+        <td class="text-right mono">₹${d.igst.toFixed(2)} <span style="font-size:10px;color:var(--text-muted);">(${d.gstRate}%)</span></td>
+      `}
+      <td class="text-right mono" style="font-weight: 700;">₹${d.totalTax.toFixed(2)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Number to Words in Indian numbering system
+function numberToIndianWords(num) {
+  if (num === 0) return "Zero Rupees";
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  function inWords(n) {
+    if (n < 20) return a[n];
+    if (n < 100) return b[Math.floor(n / 10)] + (n % 10 !== 0 ? " " + a[n % 10] : "");
+    if (n < 1000) return a[Math.floor(n / 100)] + " Hundred" + (n % 100 !== 0 ? " and " + inWords(n % 100) : "");
+    if (n < 100000) return inWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 !== 0 ? " " + inWords(n % 1000) : "");
+    if (n < 10000000) return inWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 !== 0 ? " " + inWords(n % 100000) : "");
+    return inWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 !== 0 ? " " + inWords(n % 10000000) : "");
+  }
+
+  const integerPart = Math.floor(Math.abs(num));
+  return inWords(integerPart) + " Rupees";
+}
+
+// =========================================================================
+// TALLY XML GENERATION ENGINE
+// =========================================================================
+
+function generateTallyXml() {
+  const vchType = appConfig.voucherType; // "Sales", "Credit Note", "Debit Note"
+  const vchNo = document.getElementById("voucher-no").value.trim() || "1";
+  const rawDate = document.getElementById("voucher-date").value || new Date().toISOString().split("T")[0];
+  const tallyDate = rawDate.replace(/-/g, ""); // YYYYMMDD
+  const partyName = document.getElementById("party-name").value.trim() || "Cash";
+  const partyGstin = document.getElementById("party-gstin").value.trim();
+  const salesLedger = document.getElementById("sales-ledger").value.trim() || "Sales Account";
+  const placeOfSupply = document.getElementById("place-of-supply").value;
+  const isIntraState = (placeOfSupply === appConfig.companyStateCode);
+  const narration = document.getElementById("voucher-narration").value.trim();
+
+  // Credit / Debit Note references
+  const origInvNo = document.getElementById("orig-invoice-no").value.trim();
+  const origInvDate = document.getElementById("orig-invoice-date").value.replace(/-/g, "");
+  const noteReason = document.getElementById("note-reason").value;
+
+  const rows = document.querySelectorAll("#items-tbody tr");
+  let inventoryListXml = "";
+  let totalTaxable = 0;
+  let totalCgst = 0;
+  let totalSgst = 0;
+  let totalIgst = 0;
+
+  rows.forEach(r => {
+    const itemName = r.querySelector(".item-name")?.value.trim() || "Item";
+    const hsn = r.querySelector(".item-hsn")?.value.trim() || "";
+    const qty = parseFloat(r.querySelector(".item-qty")?.value) || 1;
+    const unit = r.querySelector(".item-unit")?.value.trim() || "PCS";
+    const rate = parseFloat(r.querySelector(".item-rate")?.value) || 0;
+    const discPercent = parseFloat(r.querySelector(".item-disc")?.value) || 0;
+    const gstRate = parseFloat(r.querySelector(".item-gst")?.value) || 0;
+
+    const gross = qty * rate;
+    const discount = (gross * discPercent) / 100;
+    const taxable = Math.max(0, gross - discount);
+
+    let cgst = 0, sgst = 0, igst = 0;
+    if (isIntraState) {
+      cgst = (taxable * (gstRate / 2)) / 100;
+      sgst = (taxable * (gstRate / 2)) / 100;
+    } else {
+      igst = (taxable * gstRate) / 100;
+    }
+
+    totalTaxable += taxable;
+    totalCgst += cgst;
+    totalSgst += sgst;
+    totalIgst += igst;
+
+    const isSales = (vchType === "Sales");
+    const isCreditNote = (vchType === "Credit Note");
+    const isDebitNote = (vchType === "Debit Note");
+
+    // In Tally XML:
+    // Sales: Inventory amount is negative (Credit to Sales)
+    // Credit Note: Inventory amount is positive (Debit to Sales Return)
+    // Debit Note: Inventory amount is negative (Credit to Purchase Return)
+    const invAmount = isCreditNote ? taxable : -taxable;
+
+    inventoryListXml += `
+        <ALLINVENTORYENTRIES.LIST>
+          <STOCKITEMNAME>${escapeXml(itemName)}</STOCKITEMNAME>
+          <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
+          <RATE>${rate.toFixed(2)}/${unit}</RATE>
+          <ACTUALQTY>${qty} ${unit}</ACTUALQTY>
+          <BILLEDQTY>${qty} ${unit}</BILLEDQTY>
+          <AMOUNT>${invAmount.toFixed(2)}</AMOUNT>
+          <ACCOUNTINGALLOCATIONS.LIST>
+            <LEDGERNAME>${escapeXml(salesLedger)}</LEDGERNAME>
+            <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
+            <AMOUNT>${invAmount.toFixed(2)}</AMOUNT>
+          </ACCOUNTINGALLOCATIONS.LIST>
+          ${hsn ? `<RATEDETAILS.LIST><GSTRATEDUTYHEAD>GST</GSTRATEDUTYHEAD><GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE><HSNCODE>${hsn}</HSNCODE></RATEDETAILS.LIST>` : ""}
+        </ALLINVENTORYENTRIES.LIST>`;
+  });
+
+  const freight = parseFloat(document.getElementById("freight-charges").value) || 0;
+  const rawGrandTotal = totalTaxable + totalCgst + totalSgst + totalIgst + freight;
+  const roundedGrandTotal = Math.round(rawGrandTotal);
+  const roundOff = roundedGrandTotal - rawGrandTotal;
+
+  // Party Ledger Sign:
+  // Sales: Party is Debited (Positive)
+  // Credit Note: Party is Credited (Negative)
+  // Debit Note: Party is Debited (Positive)
+  const isCreditNote = (vchType === "Credit Note");
+  const partyAmount = isCreditNote ? -roundedGrandTotal : roundedGrandTotal;
+  const partyPositive = isCreditNote ? "No" : "Yes";
+
+  let ledgerEntriesXml = `
+        <!-- Party Ledger Entry -->
+        <LEDGERENTRIES.LIST>
+          <LEDGERNAME>${escapeXml(partyName)}</LEDGERNAME>
+          <ISDEEMEDPOSITIVE>${partyPositive}</ISDEEMEDPOSITIVE>
+          <AMOUNT>${partyAmount.toFixed(2)}</AMOUNT>
+          ${partyGstin ? `<PARTYGSTIN>${partyGstin}</PARTYGSTIN>` : ""}
+        </LEDGERENTRIES.LIST>`;
+
+  // Tax Ledgers
+  if (isIntraState) {
+    if (totalCgst > 0) {
+      const cgstAmt = isCreditNote ? totalCgst : -totalCgst;
+      ledgerEntriesXml += `
+        <LEDGERENTRIES.LIST>
+          <LEDGERNAME>CGST</LEDGERNAME>
+          <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
+          <AMOUNT>${cgstAmt.toFixed(2)}</AMOUNT>
+        </LEDGERENTRIES.LIST>`;
+    }
+    if (totalSgst > 0) {
+      const sgstAmt = isCreditNote ? totalSgst : -totalSgst;
+      ledgerEntriesXml += `
+        <LEDGERENTRIES.LIST>
+          <LEDGERNAME>SGST</LEDGERNAME>
+          <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
+          <AMOUNT>${sgstAmt.toFixed(2)}</AMOUNT>
+        </LEDGERENTRIES.LIST>`;
+    }
+  } else {
+    if (totalIgst > 0) {
+      const igstAmt = isCreditNote ? totalIgst : -totalIgst;
+      ledgerEntriesXml += `
+        <LEDGERENTRIES.LIST>
+          <LEDGERNAME>IGST</LEDGERNAME>
+          <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
+          <AMOUNT>${igstAmt.toFixed(2)}</AMOUNT>
+        </LEDGERENTRIES.LIST>`;
+    }
+  }
+
+  // Freight Charge Ledger
+  if (freight > 0) {
+    const freightAmt = isCreditNote ? freight : -freight;
+    ledgerEntriesXml += `
+        <LEDGERENTRIES.LIST>
+          <LEDGERNAME>Freight Charges</LEDGERNAME>
+          <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
+          <AMOUNT>${freightAmt.toFixed(2)}</AMOUNT>
+        </LEDGERENTRIES.LIST>`;
+  }
+
+  // Round Off Ledger
+  if (Math.abs(roundOff) > 0.001) {
+    const roAmt = isCreditNote ? roundOff : -roundOff;
+    ledgerEntriesXml += `
+        <LEDGERENTRIES.LIST>
+          <LEDGERNAME>Round Off</LEDGERNAME>
+          <ISDEEMEDPOSITIVE>${roAmt < 0 ? "No" : "Yes"}</ISDEEMEDPOSITIVE>
+          <AMOUNT>${roAmt.toFixed(2)}</AMOUNT>
+        </LEDGERENTRIES.LIST>`;
+  }
+
+  // Credit / Debit Note Statutory Reference XML
+  let refXml = "";
+  if (vchType !== "Sales" && origInvNo) {
+    refXml = `
+        <INVOICEDETAILS.LIST>
+          <ORIGINALINVOICENO>${escapeXml(origInvNo)}</ORIGINALINVOICENO>
+          <ORIGINALINVOICEDATE>${origInvDate || tallyDate}</ORIGINALINVOICEDATE>
+          <REASONFORNOTE>${escapeXml(noteReason)}</REASONFORNOTE>
+        </INVOICEDETAILS.LIST>`;
+  }
+
+  // Full Compliant Tally XML Envelope
+  return `<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>${escapeXml(appConfig.companyName)}</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="${escapeXml(vchType)}" ACTION="Create" OBJVIEW="Invoice Voucher View">
+            <DATE>${tallyDate}</DATE>
+            <EFFECTIVEDATE>${tallyDate}</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>${escapeXml(vchType)}</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>${escapeXml(vchNo)}</VOUCHERNUMBER>
+            <PARTYLEDGERNAME>${escapeXml(partyName)}</PARTYLEDGERNAME>
+            <BASICBUYERNAME>${escapeXml(partyName)}</BASICBUYERNAME>
+            <PLACEOFSUPPLY>${getStateName(placeOfSupply)}</PLACEOFSUPPLY>
+            <ISINVOICE>Yes</ISINVOICE>
+            ${narration ? `<NARRATION>${escapeXml(narration)}</NARRATION>` : ""}
+            ${refXml}
+            ${inventoryListXml}
+            ${ledgerEntriesXml}
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>`;
+}
+
+function escapeXml(unsafe) {
+  if (!unsafe) return "";
+  return unsafe.toString().replace(/[<>&'"]/g, c => {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+    }
+  });
+}
+
+// =========================================================================
+// ACTION HANDLERS: PUSH TO TALLY, VIEW XML, PREVIEW, PRINT
+// =========================================================================
+
+function previewTallyXml() {
+  const xml = generateTallyXml();
+  document.getElementById("xml-display-box").textContent = xml;
+  openModal("modal-xml");
+}
+
+function copyXmlToClipboard() {
+  const xml = document.getElementById("xml-display-box").textContent;
+  navigator.clipboard.writeText(xml).then(() => {
+    showToast("Tally XML copied to clipboard!", "success");
+  });
+}
+
+function downloadXmlFile() {
+  const xml = document.getElementById("xml-display-box").textContent;
+  const vchNo = document.getElementById("voucher-no").value.trim() || "voucher";
+  const blob = new Blob([xml], { type: "text/xml;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `Tally_${appConfig.voucherType}_${vchNo}.xml`;
+  a.click();
+  showToast("XML file downloaded", "success");
+}
+
+async function pushVoucherToTally() {
+  const btn = document.getElementById("btn-push-tally");
+  const origText = btn.innerHTML;
+  btn.innerHTML = `⏳ Pushing to Tally...`;
+  btn.disabled = true;
+
+  try {
+    const xmlPayload = generateTallyXml();
+    const apiEndpoint = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? "/api/tally-proxy" : "/api/tally";
+
+    const response = await fetch(apiEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        "X-Tally-URL": appConfig.connectorUrl
+      },
+      body: xmlPayload
+    });
+
+    const responseText = await response.text();
+
+    if (response.ok && (responseText.includes("<CREATED>1</CREATED>") || responseText.includes("<ALTERED>1</ALTERED>"))) {
+      showToast(`🎉 ${appConfig.voucherType} successfully created in Tally!`, "success");
+      
+      const vchNo = document.getElementById("voucher-no")?.value.trim();
+      const vchDate = document.getElementById("voucher-date")?.value;
+      const grandTotal = document.getElementById("grand-total-val")?.textContent?.replace('₹', '') || '0';
+      const itemsCount = document.querySelectorAll("#items-tbody tr").length;
+      saveInvoiceRecord({
+        vchNo,
+        date: vchDate,
+        party: partyName || "Cash",
+        type: appConfig.voucherType,
+        amount: grandTotal,
+        itemCount: itemsCount,
+        status: "SUCCESS"
+      });
+
+      // Save item rates to party price memory for next time auto-fill
+      const partyNameVal = document.getElementById("party-name")?.value.trim();
+      if (partyNameVal) {
+        document.querySelectorAll("#items-tbody tr").forEach(r => {
+          const item = r.querySelector(".item-name")?.value.trim();
+          const rate = parseFloat(r.querySelector(".item-rate")?.value);
+          if (item && rate > 0) {
+            savePartyLastRate(partyNameVal, item, rate);
+          }
+        });
+      }
+
+      // Auto-increment invoice number
+      incrementVoucherNumber();
+    } else if (responseText.includes("<LINEERROR>")) {
+      const match = responseText.match(/<LINEERROR>(.*?)<\/LINEERROR>/);
+      const errMsg = match ? match[1] : "Tally Rejected the Voucher";
+      showToast(`Tally Error: ${errMsg}`, "error");
+      console.error("Tally Line Error:", responseText);
+    } else {
+      // If connector or proxy returned raw output
+      showToast("Voucher packet dispatched to Tally Gateway", "info");
+      console.log("Tally Gateway Response:", responseText);
+    }
+  } catch (err) {
+    console.error("Push Error:", err);
+    showToast(`Network Error: ${err.message}`, "error");
+  } finally {
+    btn.innerHTML = origText;
+    btn.disabled = false;
+  }
+}
+
+// =========================================================================
+// CASH RECEIPT VOUCHER ENGINE (Agst Ref Settlement)
+// =========================================================================
+
+function handleReceiptPartyChange() {
+  const partyInput = document.getElementById("receipt-party");
+  const balSpan = document.getElementById("receipt-party-bal");
+  if (!partyInput || !balSpan) return;
+
+  const val = partyInput.value.trim().toLowerCase();
+  const party = window.allDebtors.find(d => d.name.toLowerCase() === val);
+  if (party && party.balance) {
+    const balNum = parseFloat(party.balance) || 0;
+    balSpan.textContent = `Current Ledger Balance: ₹${Math.abs(balNum).toLocaleString('en-IN', {minimumFractionDigits: 2})} ${balNum >= 0 ? 'Dr (Baaki)' : 'Cr (Advance)'}`;
+  } else {
+    balSpan.textContent = "";
+  }
+}
+
+function generateReceiptXml() {
+  const vchNo = document.getElementById("receipt-vch-no")?.value.trim() || "1074";
+  const rawDate = document.getElementById("receipt-date")?.value || new Date().toISOString().split("T")[0];
+  const tallyDate = rawDate.replace(/-/g, "");
+  const account = document.getElementById("receipt-account")?.value || "Cash";
+  const party = document.getElementById("receipt-party")?.value.trim() || "Cash";
+  const billRef = document.getElementById("receipt-bill-ref")?.value.trim();
+  const amt = parseFloat(document.getElementById("receipt-amount")?.value) || 0;
+  const narration = document.getElementById("receipt-narration")?.value.trim();
+
+  let billAlloc = "";
+  if (billRef) {
+    billAlloc = `
+              <BILLALLOCATIONS.LIST>
+                <NAME>${escapeXml(billRef)}</NAME>
+                <BILLTYPE>Agst Ref</BILLTYPE>
+                <AMOUNT>${amt.toFixed(2)}</AMOUNT>
+              </BILLALLOCATIONS.LIST>`;
+  }
+
+  return `<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+        <STATICVARIABLES>
+          <SVCURRENTCOMPANY>${escapeXml(appConfig.companyName)}</SVCURRENTCOMPANY>
+        </STATICVARIABLES>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          <VOUCHER VCHTYPE="Cash Receipt" ACTION="Create">
+            <DATE>${tallyDate}</DATE>
+            <EFFECTIVEDATE>${tallyDate}</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Cash Receipt</VOUCHERTYPENAME>
+            <VOUCHERNUMBER>${escapeXml(vchNo)}</VOUCHERNUMBER>
+            <NARRATION>${escapeXml(narration)}</NARRATION>
+            <!-- Debit Cash / Bank -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>${escapeXml(account)}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>-${amt.toFixed(2)}</AMOUNT>
+            </ALLLEDGERENTRIES.LIST>
+            <!-- Credit Party with Agst Ref -->
+            <ALLLEDGERENTRIES.LIST>
+              <LEDGERNAME>${escapeXml(party)}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>${amt.toFixed(2)}</AMOUNT>${billAlloc}
+            </ALLLEDGERENTRIES.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>`;
+}
+
+async function pushReceiptToTally() {
+  const party = document.getElementById("receipt-party")?.value.trim();
+  const amt = parseFloat(document.getElementById("receipt-amount")?.value) || 0;
+  if (!party) {
+    showToast("Please enter or select a customer party name", "error");
+    return;
+  }
+  if (amt <= 0) {
+    showToast("Please enter a valid receipt amount", "error");
+    return;
+  }
+
+  const xmlPayload = generateReceiptXml();
+  const apiEndpoint = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") ? "/api/tally-proxy" : "/api/tally";
+
+  showToast("⏳ Posting Cash Receipt to Tally...", "info");
+  try {
+    const response = await fetch(apiEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/xml; charset=utf-8",
+        "X-Tally-URL": appConfig.connectorUrl
+      },
+      body: xmlPayload
+    });
+    const respText = await response.text();
+    if (response.ok && (respText.includes("<CREATED>1</CREATED>") || respText.includes("<ALTERED>1</ALTERED>"))) {
+      showToast(`🎉 Cash Receipt successfully posted to Tally!`, "success");
+      
+      saveInvoiceRecord({
+        vchNo: document.getElementById("receipt-vch-no")?.value || "1074",
+        date: document.getElementById("receipt-date")?.value || new Date().toISOString().split("T")[0],
+        party: party || "Cash",
+        type: "Cash Receipt",
+        amount: amt,
+        itemCount: 1,
+        status: "SUCCESS"
+      });
+
+      const vInput = document.getElementById("receipt-vch-no");
+      if (vInput) {
+        const num = parseInt(vInput.value, 10);
+        if (!isNaN(num)) vInput.value = num + 1;
+      }
+    } else {
+      showToast("Receipt packet sent to Tally", "info");
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, "error");
+  }
+}
+
+function previewReceiptXml() {
+  const xml = generateReceiptXml();
+  document.getElementById("xml-display-box").textContent = xml;
+  openModal("modal-xml");
+}
+
+function incrementVoucherNumber() {
+  const vchInput = document.getElementById("voucher-no");
+  const cur = vchInput.value;
+  const match = cur.match(/\d+$/);
+  if (match) {
+    const num = parseInt(match[0], 10) + 1;
+    const padded = String(num).padStart(match[0].length, "0");
+    vchInput.value = cur.substring(0, match.index) + padded;
+  }
+}
+
+// Check Heartbeat of Tally Gateway
+async function checkConnectorStatus() {
+  const dot = document.getElementById("status-indicator");
+  const text = document.getElementById("status-text");
+
+  try {
+    const res = await fetch("/api/ping-tally", {
+      headers: { "X-Tally-URL": appConfig.connectorUrl }
+    });
+    const data = await res.json();
+    if (data.status === "online") {
+      dot.className = "status-dot online";
+      text.textContent = `TallyPrime Online (${appConfig.companyName})`;
+    } else {
+      dot.className = "status-dot";
+      text.textContent = `Tally Connector Offline`;
+    }
+  } catch (e) {
+    dot.className = "status-dot";
+    text.textContent = `Connector Standby`;
+  }
+}
+
+// Sample Data Filler
+function loadSampleInvoice() {
+  document.getElementById("party-name").value = "Sharma Grocery Mart";
+  document.getElementById("party-gstin").value = "07BBAAA9999C1Z1";
+  document.getElementById("party-phone").value = "+91 98111 22334";
+  document.getElementById("party-billing-address").value = "Shop 14, Main Bazar, Chandni Chowk, Delhi - 110006";
+  document.getElementById("party-shipping-address").value = "Godown 2B, GT Karnal Road, Delhi";
+  document.getElementById("voucher-narration").value = "Being goods sold on 15 days credit terms.";
+
+  const tbody = document.getElementById("items-tbody");
+  tbody.innerHTML = "";
+
+  addItemRow({ name: "Basmati Rice Premium (1kg)", hsn: "1006", qty: 25, unit: "KG", rate: 120, discount: 5, gst: 5 });
+  addItemRow({ name: "Fortune Sunlite Refined Oil (1L)", hsn: "1512", qty: 15, unit: "LTR", rate: 145, discount: 2, gst: 5 });
+  addItemRow({ name: "Amul Butter Pasteurized (500g)", hsn: "0405", qty: 10, unit: "PKT", rate: 275, discount: 0, gst: 12 });
+  addItemRow({ name: "Cadbury Dairy Milk Silk Chocolate", hsn: "1806", qty: 30, unit: "PCS", rate: 175, discount: 10, gst: 18 });
+
+  document.getElementById("freight-charges").value = "150";
+  recalculateTotals();
+  showToast("Sample data loaded into invoice!", "success");
+}
+
+function resetForm() {
+  if (confirm("Reset current voucher and create a new one?")) {
+    document.getElementById("party-name").value = "";
+    document.getElementById("party-gstin").value = "";
+    document.getElementById("party-phone").value = "";
+    document.getElementById("party-billing-address").value = "";
+    document.getElementById("party-shipping-address").value = "";
+    document.getElementById("voucher-narration").value = "";
+    document.getElementById("freight-charges").value = "0";
+
+    const tbody = document.getElementById("items-tbody");
+    tbody.innerHTML = "";
+    addItemRow();
+    incrementVoucherNumber();
+    recalculateTotals();
+    showToast("Form reset for new voucher", "info");
+  }
+}
+
+// Settings Modal
+function openSettingsModal() {
+  document.getElementById("cfg-connector-url").value = appConfig.connectorUrl;
+  document.getElementById("cfg-company-name").value = appConfig.companyName;
+  document.getElementById("cfg-company-gstin").value = appConfig.companyGstin;
+  document.getElementById("cfg-company-state").value = appConfig.companyStateCode;
+  openModal("modal-settings");
+}
+
+function saveSettings() {
+  appConfig.connectorUrl = document.getElementById("cfg-connector-url").value.trim();
+  appConfig.companyName = document.getElementById("cfg-company-name").value.trim();
+  appConfig.companyGstin = document.getElementById("cfg-company-gstin").value.trim();
+  appConfig.companyStateCode = document.getElementById("cfg-company-state").value;
+
+  document.getElementById("lbl-active-company").textContent = appConfig.companyName;
+  updatePrintHeader();
+  closeModal("modal-settings");
+  checkConnectorStatus();
+  recalculateTotals();
+  showToast("Configuration saved successfully", "success");
+}
+
+// Modal Helpers
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add("active");
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove("active");
+}
+
+// Toast System
+function showToast(msg, type = "info") {
+  const shelf = document.getElementById("toast-shelf");
+  const t = document.createElement("div");
+  t.className = `toast ${type}`;
+
+  const icon = type === "success" ? "✅" : (type === "error" ? "❌" : "ℹ️");
+  t.innerHTML = `<span>${icon}</span> <span>${msg}</span>`;
+
+  shelf.appendChild(t);
+  setTimeout(() => {
+    t.style.opacity = "0";
+    t.style.transform = "translateX(20px)";
+    setTimeout(() => t.remove(), 300);
+  }, 4000);
+}
+
+// =========================================================================
+// INVOICE & VOUCHER HISTORY / DAYBOOK ENGINE
+// =========================================================================
+
+function saveInvoiceRecord(record) {
+  try {
+    const list = JSON.parse(localStorage.getItem("NFM_INVOICE_HISTORY") || "[]");
+    list.unshift(record); // newest first
+    localStorage.setItem("NFM_INVOICE_HISTORY", JSON.stringify(list.slice(0, 200)));
+  } catch (e) {}
+}
+
+function openHistoryModal() {
+  renderHistory();
+  openModal("modal-history");
+}
+
+function clearHistoryRecords() {
+  if (confirm("Clear local voucher history records?")) {
+    localStorage.removeItem("NFM_INVOICE_HISTORY");
+    renderHistory();
+    showToast("History cleared", "info");
+  }
+}
+
+function renderHistory() {
+  const container = document.getElementById("history-list-container");
+  const countBadge = document.getElementById("history-count-badge");
+  if (!container) return;
+
+  const list = JSON.parse(localStorage.getItem("NFM_INVOICE_HISTORY") || "[]");
+  countBadge.textContent = `${list.length} Vouchers Saved`;
+
+  if (list.length === 0) {
+    container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 30px;">No vouchers saved yet. When you create an invoice or receipt, it will appear here.</div>`;
+    return;
+  }
+
+  container.innerHTML = list.map(item => `
+    <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+      <div>
+        <div style="font-size: 13px; font-weight: 700; color: #0f172a;">
+          <span style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${item.type}</span>
+          ${item.vchNo} &bull; <span style="color: var(--primary);">${item.party}</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+          📅 ${item.date} &bull; ${item.itemCount || 1} Items &bull; 
+          <span style="color: ${item.status === 'SUCCESS' ? 'var(--success)' : '#eab308'}; font-weight: 600;">
+            ${item.status === 'SUCCESS' ? '✅ Synced to Tally' : '⏳ Saved Locally'}
+          </span>
+        </div>
+      </div>
+      <div style="text-align: right;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: #b91c1c;">
+          ₹${parseFloat(item.amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2})}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+

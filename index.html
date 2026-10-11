@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TallyPrime Smart Billing Suite — Sales, Credit & Debit Notes</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%22><text y=%2226%22 font-size=%2226%22>⚡</text></svg>">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="top-navbar">
+    <div class="brand-section">
+      <div class="brand-logo-badge">⚡</div>
+      <div>
+        <h1 class="brand-title">TallyPrime Smart Billing Suite</h1>
+        <p class="brand-sub">GST Compliant Invoicing & Realtime Tally Gateway</p>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div class="connector-status-badge">
+        <span class="status-dot" id="status-indicator"></span>
+        <span id="status-text">Checking Connector...</span>
+      </div>
+      <button class="btn btn-outline" onclick="openHistoryModal()">
+        📜 History
+      </button>
+      <button class="btn btn-outline" onclick="openSettingsModal()">
+        ⚙️ Settings
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="app-container">
+
+    <!-- Print Header Only -->
+    <div class="print-only-header">
+      <h2 id="print-company-name">NANAK FOOD MART</h2>
+      <p id="print-company-address">GSTIN: 07AAAAA0000A1Z5 | State: Delhi (07)</p>
+      <h3 style="margin-top: 6px; text-decoration: underline;" id="print-voucher-title">TAX INVOICE</h3>
+    </div>
+
+    <!-- Voucher Selector & Action Ribbon -->
+    <section class="voucher-tabs-card no-print">
+      <div class="voucher-nav-pills">
+        <button class="voucher-pill active" data-type="Sales" onclick="setVoucherType('Sales')">
+          🏷️ Sales Invoice
+        </button>
+        <button class="voucher-pill" data-type="Receipt" onclick="setVoucherType('Receipt')">
+          💳 Cash Receipt
+        </button>
+        <button class="voucher-pill" data-type="Credit Note" onclick="setVoucherType('Credit Note')">
+          🔻 Credit Note
+        </button>
+        <button class="voucher-pill" data-type="Debit Note" onclick="setVoucherType('Debit Note')">
+          🔺 Debit Note
+        </button>
+      </div>
+
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="btn btn-outline" onclick="loadSampleInvoice()">
+          ✨ Fill Sample
+        </button>
+        <button class="btn btn-outline" onclick="resetForm()">
+          🔄 New Voucher
+        </button>
+      </div>
+    </section>
+
+    <!-- Cash / Bank Receipt Section (Active when Voucher Type is Receipt) -->
+    <section class="form-card" id="receipt-card" style="display: none;">
+      <div class="card-header-bar">
+        <div class="card-title">
+          <span class="card-title-icon">💳</span>
+          <span>Cash / Bank Receipt Entry (Bill Settlement)</span>
+        </div>
+        <span style="font-size: 12px; color: var(--success); font-weight: 700;">
+          Single-Entry Mode (Agst Ref Settlement)
+        </span>
+      </div>
+
+      <div class="grid-3">
+        <div class="form-group">
+          <label class="form-label">Receipt Voucher No <span class="req">*</span></label>
+          <input type="text" class="form-control mono" id="receipt-vch-no" value="1074">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Receipt Date <span class="req">*</span></label>
+          <input type="date" class="form-control" id="receipt-date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Account (Cash / Bank) <span class="req">*</span></label>
+          <select class="form-control" id="receipt-account">
+            <option value="Cash" selected>Cash</option>
+            <option value="ICICI Bank">ICICI Bank</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid-3" style="margin-top: 14px;">
+        <div class="form-group">
+          <label class="form-label">Customer / Party Name <span class="req">*</span></label>
+          <input type="text" class="form-control" id="receipt-party" list="party-suggestions" placeholder="e.g. The Eclair Bakery" onchange="handleReceiptPartyChange()">
+          <small id="receipt-party-bal" style="font-size: 11px; color: var(--primary); font-weight: 600;"></small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Bill Ref (Agst Ref) <span class="req">*</span></label>
+          <input type="text" class="form-control mono" id="receipt-bill-ref" placeholder="e.g. NFM/26-27/13652">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount Received (₹) <span class="req">*</span></label>
+          <input type="number" class="form-control mono" id="receipt-amount" step="0.01" placeholder="300.00">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top: 14px;">
+        <label class="form-label">Narration / Remarks</label>
+        <input type="text" class="form-control" id="receipt-narration" placeholder="Payment received against invoice">
+      </div>
+
+      <div style="margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn btn-outline" onclick="previewReceiptXml()">
+          📑 View Receipt XML
+        </button>
+        <button class="btn btn-success" onclick="pushReceiptToTally()">
+          🚀 Post Cash Receipt to Tally
+        </button>
+      </div>
+    </section>
+
+    <!-- Company (Seller) & Invoice Details -->
+    <section class="form-card" id="invoice-details-card">
+      <div class="card-header-bar">
+        <div class="card-title">
+          <span class="card-title-icon">🏢</span>
+          <span id="voucher-heading">Tax Invoice Details</span>
+        </div>
+        <span style="font-size: 12px; color: var(--text-muted);">
+          Company: <strong id="lbl-active-company" style="color: var(--primary);">Nanak Food Mart</strong>
+        </span>
+      </div>
+
+      <div class="grid-4">
+        <div class="form-group">
+          <label class="form-label">Voucher Number <span class="req">*</span></label>
+          <input type="text" class="form-control mono" id="voucher-no" value="INV-2026-001" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Voucher Date <span class="req">*</span></label>
+          <input type="date" class="form-control" id="voucher-date" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Place of Supply (State) <span class="req">*</span></label>
+          <select class="form-control" id="place-of-supply" onchange="recalculateTotals()">
+            <!-- Populated via JS -->
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Sales / Account Ledger <span class="req">*</span></label>
+          <input type="text" class="form-control" id="sales-ledger" value="Sales Account" placeholder="e.g. Sales Account">
+        </div>
+      </div>
+
+      <!-- Credit / Debit Note Reference Section (Hidden on Sales) -->
+      <div id="cr-dr-ref-container" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border-color);">
+        <div class="grid-3">
+          <div class="form-group">
+            <label class="form-label">Original Invoice No <span class="req">*</span></label>
+            <input type="text" class="form-control mono" id="orig-invoice-no" placeholder="e.g. INV-2026-001">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Original Invoice Date <span class="req">*</span></label>
+            <input type="date" class="form-control" id="orig-invoice-date">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Reason for Note <span class="req">*</span></label>
+            <select class="form-control" id="note-reason">
+              <option value="01-Sales Return">01 - Sales Return</option>
+              <option value="02-Post Sale Discount">02 - Post Sale Discount</option>
+              <option value="03-Deficiency in services">03 - Deficiency in services</option>
+              <option value="04-Correction in Invoice">04 - Correction in Invoice</option>
+              <option value="05-Change in POS">05 - Change in POS</option>
+              <option value="06-Finalization of Provisional Assessment">06 - Finalization of Provisional Assessment</option>
+              <option value="07-Others">07 - Others</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Party / Buyer Details -->
+    <section class="form-card" id="party-card">
+      <div class="card-header-bar">
+        <div class="card-title">
+          <span class="card-title-icon">👤</span>
+          <span>Party (Buyer / Debtor) Details</span>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted);">
+          GST Type: <strong id="lbl-gst-type" style="color: var(--sales-color);">CGST + SGST (Intra-State)</strong>
+        </div>
+      </div>
+
+      <div class="grid-3">
+        <div class="form-group">
+          <label class="form-label">Party / Buyer Ledger Name <span class="req">*</span></label>
+          <input type="text" class="form-control" id="party-name" list="party-suggestions" placeholder="e.g. Sharma Grocery Store" required>
+          <datalist id="party-suggestions">
+            <option value="Sharma Grocery Store">
+            <option value="Gupta Traders">
+            <option value="Agarwal Mega Mart">
+            <option value="Cash / Retail Customer">
+          </datalist>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Buyer GSTIN / UIN</label>
+          <input type="text" class="form-control mono" id="party-gstin" maxlength="15" placeholder="07AAAAA0000A1Z5" oninput="handleGstinInput()">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Party Contact / Phone</label>
+          <input type="text" class="form-control" id="party-phone" placeholder="+91 98765 43210">
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top: 14px;">
+        <div class="form-group">
+          <label class="form-label">Billing Address</label>
+          <input type="text" class="form-control" id="party-billing-address" placeholder="Shop No. 12, Main Market, Delhi">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Shipping / Delivery Address</label>
+          <input type="text" class="form-control" id="party-shipping-address" placeholder="Same as billing address">
+        </div>
+      </div>
+    </section>
+
+    <!-- Items / Inventory Grid -->
+    <section class="form-card" id="items-card">
+      <div class="card-header-bar">
+        <div class="card-title">
+          <span class="card-title-icon">📦</span>
+          <span>Inventory Line Items</span>
+        </div>
+        <button class="btn btn-outline" onclick="addItemRow()">
+          + Add Item
+        </button>
+      </div>
+
+      <div class="item-table-container">
+        <table class="item-table" id="items-table">
+          <thead>
+            <tr>
+              <th style="width: 30px;">#</th>
+              <th style="min-width: 220px;">Item Description / Stock Item</th>
+              <th style="width: 110px;">HSN / SAC</th>
+              <th style="width: 80px;">Qty</th>
+              <th style="width: 90px;">Unit</th>
+              <th style="width: 100px;">Rate (₹)</th>
+              <th style="width: 80px;">Disc (%)</th>
+              <th style="width: 110px;" class="text-right">Taxable (₹)</th>
+              <th style="width: 100px;">GST Rate</th>
+              <th style="width: 110px;" class="text-right">Tax (₹)</th>
+              <th style="width: 120px;" class="text-right">Total (₹)</th>
+              <th style="width: 40px;" class="no-print"></th>
+            </tr>
+          </thead>
+          <tbody id="items-tbody">
+            <!-- Dynamic Rows -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="no-print" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+        <button class="btn btn-outline" onclick="addItemRow()">
+          + Add Line Item
+        </button>
+        <span style="font-size: 12px; color: var(--text-muted);" id="row-count-label">1 Item</span>
+      </div>
+    </section>
+
+    <!-- Tax Summary & Totals -->
+    <section class="summary-container" id="summary-card">
+      
+      <!-- HSN Wise Tax Summary Box -->
+      <div class="hsn-summary-box">
+        <div class="hsn-summary-title">
+          <span>HSN / SAC Tax Breakdown</span>
+          <span id="hsn-count-badge" style="color: var(--primary);">0 HSNs</span>
+        </div>
+        <table class="item-table" style="font-size: 11px;">
+          <thead>
+            <tr>
+              <th>HSN/SAC</th>
+              <th class="text-right">Taxable Amt</th>
+              <th class="text-right" id="th-cgst">CGST</th>
+              <th class="text-right" id="th-sgst">SGST</th>
+              <th class="text-right" id="th-igst">IGST</th>
+              <th class="text-right">Total Tax</th>
+            </tr>
+          </thead>
+          <tbody id="hsn-summary-tbody">
+            <!-- Dynamic HSN summary rows -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Financial Totals Box -->
+      <div class="totals-box">
+        <div class="totals-row">
+          <span>Subtotal (Taxable Value):</span>
+          <span class="mono" id="subtotal-val">₹0.00</span>
+        </div>
+
+        <div class="totals-row" id="row-cgst">
+          <span>Central Tax (CGST):</span>
+          <span class="mono" id="cgst-val">₹0.00</span>
+        </div>
+
+        <div class="totals-row" id="row-sgst">
+          <span>State Tax (SGST):</span>
+          <span class="mono" id="sgst-val">₹0.00</span>
+        </div>
+
+        <div class="totals-row" id="row-igst" style="display: none;">
+          <span>Integrated Tax (IGST):</span>
+          <span class="mono" id="igst-val">₹0.00</span>
+        </div>
+
+        <div class="totals-row">
+          <span>Freight / Shipping Charges:</span>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <span>₹</span>
+            <input type="number" class="form-control mono text-right" id="freight-charges" value="0.00" step="1" style="width: 100px; padding: 4px 6px;" oninput="recalculateTotals()">
+          </div>
+        </div>
+
+        <div class="totals-row">
+          <span>Round Off:</span>
+          <span class="mono" id="round-off-val">₹0.00</span>
+        </div>
+
+        <div class="totals-row grand-total">
+          <span>Total Invoice Amount:</span>
+          <span class="mono" id="grand-total-val">₹0.00</span>
+        </div>
+
+        <div class="amount-words-banner" id="amount-in-words">
+          Amount in words: Zero Rupees Only
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Narration / Terms -->
+    <section class="form-card" id="narration-card" style="margin-top: 24px;">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Voucher Narration / Remarks</label>
+          <textarea class="form-control" id="voucher-narration" rows="2" placeholder="e.g. Goods sold subject to terms and conditions."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Terms of Delivery / Payment</label>
+          <textarea class="form-control" id="voucher-terms" rows="2" placeholder="e.g. Payment due within 15 days of invoice date."></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sticky Actions Footer -->
+    <footer class="actions-footer no-print" id="actions-footer">
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-outline" onclick="previewTallyXml()">
+          📑 View Tally XML
+        </button>
+        <button class="btn btn-outline" onclick="window.print()">
+          🖨️ Print Invoice
+        </button>
+      </div>
+
+      <div style="display: flex; gap: 12px; align-items: center;">
+        <button class="btn btn-success" id="btn-push-tally" onclick="pushVoucherToTally()">
+          🚀 Push to TallyPrime
+        </button>
+      </div>
+    </footer>
+
+    <!-- Mobile Sticky Floating POS Bar -->
+    <div class="mobile-sticky-bar no-print" id="mobile-sticky-bar">
+      <div class="mobile-bar-info">
+        <span id="mobile-bar-count">1 Item</span>
+        <strong id="mobile-bar-total">₹0.00</strong>
+      </div>
+      <button class="btn btn-success mobile-bar-btn" onclick="pushVoucherToTally()">
+        ⚡ Push Tally
+      </button>
+    </div>
+
+  </main>
+
+  <!-- =========================================================================
+       MODALS: XML PREVIEW & CONNECTOR SETTINGS
+       ========================================================================= -->
+
+  <!-- XML Preview Modal -->
+  <div class="modal-backdrop" id="modal-xml">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="font-size: 15px; font-weight: 700;">TallyPrime Compliant XML Payload</h3>
+        <button class="btn btn-outline" style="padding: 4px 8px;" onclick="closeModal('modal-xml')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <pre class="xml-code-block" id="xml-display-box"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="copyXmlToClipboard()">📋 Copy XML</button>
+        <button class="btn btn-primary" onclick="downloadXmlFile()">💾 Download .xml</button>
+        <button class="btn btn-outline" onclick="closeModal('modal-xml')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- History & Record Modal -->
+  <div class="modal-backdrop" id="modal-history">
+    <div class="modal-card" style="max-width: 750px;">
+      <div class="modal-header">
+        <h3 style="font-size: 15px; font-weight: 700;">📜 Invoice & Voucher History (Local Records)</h3>
+        <button class="btn btn-outline" style="padding: 4px 8px;" onclick="closeModal('modal-history')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <span style="font-size: 12px; color: var(--text-muted);" id="history-count-badge">0 Vouchers Saved</span>
+          <button class="btn btn-outline" style="font-size: 11px; padding: 4px 8px;" onclick="clearHistoryRecords()">Clear History</button>
+        </div>
+        <div id="history-list-container" style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modal-history')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-backdrop" id="modal-settings">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="font-size: 15px; font-weight: 700;">Tally Connector & Company Configuration</h3>
+        <button class="btn btn-outline" style="padding: 4px 8px;" onclick="closeModal('modal-settings')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label">Tally Connector Gateway URL</label>
+          <input type="text" class="form-control" id="cfg-connector-url" value="https://competition-recovered-commented-nevada.trycloudflare.com/?key=infra_e35b972d8abf4487">
+          <small style="color: var(--text-muted); font-size: 11px;">Cloudflare Tunnel / Local Infralyzer gateway endpoint</small>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label">Tally Company Name</label>
+          <input type="text" class="form-control" id="cfg-company-name" value="nanakfoodmart">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label">Company GSTIN</label>
+          <input type="text" class="form-control mono" id="cfg-company-gstin" value="07AAAAA0000A1Z5">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label">Company Base State</label>
+          <select class="form-control" id="cfg-company-state">
+            <!-- Populated via JS -->
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modal-settings')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSettings()">Save Configuration</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Shelf -->
+  <div class="toast-shelf" id="toast-shelf"></div>
+
+  <!-- Common Stock Items Datalist -->
+  <datalist id="stock-item-datalist">
+    <option value="Basmati Rice Premium (1kg)" data-hsn="1006" data-unit="KG" data-rate="120" data-gst="5">
+    <option value="Fortune Sunlite Refined Oil (1L)" data-hsn="1512" data-unit="LTR" data-rate="145" data-gst="5">
+    <option value="Aashirvaad Shudh Chakki Atta (10kg)" data-hsn="1101" data-unit="BAG" data-rate="420" data-gst="5">
+    <option value="Tata Salt Vacuum Evaporated (1kg)" data-hsn="2501" data-unit="PKT" data-rate="28" data-gst="0">
+    <option value="Amul Butter Pasteurized (500g)" data-hsn="0405" data-unit="PKT" data-rate="275" data-gst="12">
+    <option value="Cadbury Dairy Milk Silk Chocolate" data-hsn="1806" data-unit="PCS" data-rate="175" data-gst="18">
+    <option value="Surf Excel Matic Top Load Detergent (2kg)" data-hsn="3402" data-unit="PKT" data-rate="460" data-gst="18">
+    <option value="Nescafe Classic Instant Coffee Jar (100g)" data-hsn="0901" data-unit="JAR" data-rate="340" data-gst="18">
+    <option value="Haldiram's Bhujia Sev (1kg)" data-hsn="2106" data-unit="PKT" data-rate="260" data-gst="12">
+  </datalist>
+
+  <script src="app.js"></script>
+</body>
+</html>
