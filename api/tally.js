@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const targetUrl = req.headers['x-tally-url'] || process.env.TALLY_URL || 'https://attempts-celebrate-analyses-mambo.trycloudflare.com/?key=infra_e35b972d8abf4487';
+  const targetUrl = req.headers['x-tally-url'] || process.env.TALLY_URL || 'https://usually-lows-constraints-jon.trycloudflare.com/?key=infra_d4e4f164a4d442d4';
   const company = req.headers['x-tally-company'] || 'Nanak Food Mart';
 
   const postTally = async (xml) => {
