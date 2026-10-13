@@ -303,6 +303,7 @@ def discover_tally_schema(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMP
   <BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY></STATICVARIABLES></DESC></BODY>
 </ENVELOPE>""", target_url, timeout=25)
         clean_xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_res)
+        clean_xml = re.sub(r'&#x?[0-9a-fA-F]+;', '', clean_xml)
         root = ET.fromstring(clean_xml.strip().encode('utf-8'))
         ledgers = root.findall(".//LEDGER")
         if ledgers:
@@ -337,6 +338,7 @@ def discover_tally_schema(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMP
   <BODY><DESC><STATICVARIABLES><SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY></STATICVARIABLES></DESC></BODY>
 </ENVELOPE>""", target_url, timeout=25)
         clean_xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_res)
+        clean_xml = re.sub(r'&#x?[0-9a-fA-F]+;', '', clean_xml)
         root = ET.fromstring(clean_xml.strip().encode('utf-8'))
         items = root.findall(".//STOCKITEM")
         if items:
