@@ -13,6 +13,7 @@ ZERO STATIC JSON FILES! Pure live API synchronization matching sync_agent archit
 
 import http.server
 import socketserver
+import time
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -139,9 +140,110 @@ def fetch_realtime_ledgers(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COM
             return cached
         return {"status": "success", "source": "verified_cache", "debtors": FALLBACK_DEBTORS, "creditors": [], "warning": str(e)}
 
-def fetch_realtime_items(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPANY):
-    """Queries Tally directly using native List of Stock Items (100% popup-free)."""
+
+_DAYBOOK_PRICE_CACHE = {"time": 0, "items": {}, "party_rates": {}, "party_phones": {}}
+
+def sync_daybook_prices(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPANY):
+    """Parses real-time Tally Day Book to extract actual billed rates, units, HSNs, GST rates and party pricing."""
+    now = time.time()
+    if _DAYBOOK_PRICE_CACHE["time"] > 0 and (now - _DAYBOOK_PRICE_CACHE["time"] < 60):
+        return _DAYBOOK_PRICE_CACHE
+
     payload = f"""<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>Day Book</ID></HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+        <SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY>
+        <SVFROMDATE>20260901</SVFROMDATE>
+        <SVTODATE>20261018</SVTODATE>
+      </STATICVARIABLES>
+    </DESC>
+  </BODY>
+</ENVELOPE>"""
+    try:
+        xml_data = post_to_tally(payload, target_url, timeout=18)
+        clean_xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_data)
+        clean_xml = re.sub(r'&#x?[0-9a-fA-F]+;', ' ', clean_xml)
+        
+        vchs = re.findall(r'<VOUCHER [^>]*>([\s\S]*?)</VOUCHER>', clean_xml)
+        item_prices = {}
+        party_rates = {}
+        party_phones = {}
+
+        for v in vchs:
+            pm = re.search(r'<PARTYLEDGERNAME>([^<]+)</PARTYLEDGERNAME>', v)
+            party = pm.group(1).strip() if pm else ''
+            party_l = party.lower()
+
+            # Phone / mobile
+            phone_m = re.search(r'<(?:LEDGERMOBILE|BASICBUYERPHONE|LEDGERPHONE|MOBILENO)>([^<]+)</', v)
+            if not phone_m:
+                phone_m = re.search(r'\b(?:[6-9]\d{9})\b', v)
+            if phone_m and party:
+                party_phones[party_l] = phone_m.group(0).strip()
+
+            inv_entries = re.findall(r'<ALLINVENTORYENTRIES\.LIST>([\s\S]*?)</ALLINVENTORYENTRIES\.LIST>', v)
+            for inv in inv_entries:
+                nm = re.search(r'<STOCKITEMNAME>([^<]+)</STOCKITEMNAME>', inv)
+                rm = re.search(r'<RATE>([^<]+)</RATE>', inv)
+                if not nm or not rm:
+                    continue
+                item_name = nm.group(1).strip()
+                rate_str = rm.group(1).strip()
+
+                rate_m = re.search(r'([\d\.]+)(?:/(\w+))?', rate_str)
+                rate_val = float(rate_m.group(1)) if rate_m else 0.0
+                unit_val = rate_m.group(2) if (rate_m and rate_m.group(2)) else 'PCS'
+
+                # Total GST: check CGST*2 or IGST
+                cgst_m = re.search(r'<GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>[\s\S]*?<GSTRATE>\s*([\d\.]+)</GSTRATE>', inv)
+                igst_m = re.search(r'<GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>[\s\S]*?<GSTRATE>\s*([\d\.]+)</GSTRATE>', inv)
+                if cgst_m:
+                    gst_val = int(round(float(cgst_m.group(1)) * 2))
+                elif igst_m:
+                    gst_val = int(round(float(igst_m.group(1))))
+                else:
+                    gst_val = 18
+
+                # HSN Code
+                hsn_m = re.search(r'<HSNCODE>([^<]+)</HSNCODE>', inv) or re.search(r'<GSTHSNNAME>([^<]+)</GSTHSNNAME>', inv)
+                hsn_val = hsn_m.group(1).strip() if hsn_m else ''
+
+                info = {
+                    'name': item_name,
+                    'rate': rate_val,
+                    'unit': unit_val,
+                    'gst': gst_val,
+                    'hsn': hsn_val
+                }
+                item_prices[item_name.lower()] = info
+
+                if party:
+                    if party_l not in party_rates:
+                        party_rates[party_l] = {}
+                    party_rates[party_l][item_name.lower()] = info
+
+        _DAYBOOK_PRICE_CACHE["time"] = now
+        _DAYBOOK_PRICE_CACHE["items"] = item_prices
+        _DAYBOOK_PRICE_CACHE["party_rates"] = party_rates
+        _DAYBOOK_PRICE_CACHE["party_phones"] = party_phones
+        print(f"Synced Day Book: {len(item_prices)} items with rates, {len(party_rates)} party price books")
+    except Exception as e:
+        print(f"Day Book sync warning: {e}")
+
+    return _DAYBOOK_PRICE_CACHE
+
+
+def fetch_realtime_items(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPANY):
+    """Queries Tally stock items and enriches with real billed selling rates, units, HSN and GST from Day Book."""
+    try:
+        # First ensure Day Book prices are synced
+        db_cache = sync_daybook_prices(target_url, company)
+        real_prices = db_cache.get("items", {})
+
+        payload = f"""<ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
@@ -157,7 +259,6 @@ def fetch_realtime_items(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPA
     </DESC>
   </BODY>
 </ENVELOPE>"""
-    try:
         xml_data = post_to_tally(payload, target_url, timeout=10)
         clean_xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_data)
         clean_xml = re.sub(r'&#x?[0-9a-fA-F]+;', ' ', clean_xml)
@@ -166,9 +267,13 @@ def fetch_realtime_items(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPA
         items = []
         added_items = set()
 
+        # Seed verified defaults
         for di in DEFAULT_ITEMS:
+            di_lower = di["name"].lower()
+            if di_lower in real_prices:
+                di.update(real_prices[di_lower])
             items.append(dict(di))
-            added_items.add(di["name"].lower())
+            added_items.add(di_lower)
 
         for item in root.findall(".//STOCKITEM"):
             name = item.get("NAME") or ""
@@ -179,10 +284,22 @@ def fetch_realtime_items(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPA
             if not name or name.isdigit() or name.lower() in added_items:
                 continue
 
-            hsn_val = "4819" if any(k in name.lower() for k in ["box", "hamper", "lid", "carton"]) else ""
-            entry = {"name": name, "unit": "PCS", "rate": 0.0, "hsn": hsn_val, "gst": 18}
+            name_lower = name.lower()
+            if name_lower in real_prices:
+                p_info = real_prices[name_lower]
+                entry = {
+                    "name": name,
+                    "unit": p_info.get("unit", "PCS"),
+                    "rate": p_info.get("rate", 0.0),
+                    "hsn": p_info.get("hsn", ""),
+                    "gst": p_info.get("gst", 18)
+                }
+            else:
+                hsn_val = "4819" if any(k in name_lower for k in ["box", "hamper", "lid", "carton"]) else ""
+                entry = {"name": name, "unit": "PCS", "rate": 0.0, "hsn": hsn_val, "gst": 18}
+
             items.append(entry)
-            added_items.add(name.lower())
+            added_items.add(name_lower)
 
         res = {"status": "success", "source": "tally_realtime", "company": company, "items": items, "total_items": len(items)}
         _CACHE["items"] = res
@@ -194,6 +311,7 @@ def fetch_realtime_items(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPA
             cached["warning"] = f"Tally query failed ({str(e)}), served from live cache."
             return cached
         return {"status": "success", "source": "verified_cache", "items": DEFAULT_ITEMS, "total_items": len(DEFAULT_ITEMS), "warning": str(e)}
+
 
 def fetch_realtime_bills(party_name, target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPANY):
     """Queries Tally directly for pending Bills Outstanding for a specific customer."""
@@ -470,6 +588,20 @@ class BillingHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/items":
             data = fetch_realtime_items(target_url, company)
             return self.send_json_response(data)
+
+        # 2.5 Real-time Party Details (Mobile, Price Memory & History)
+        elif path == "/api/party-details":
+            party = params.get("name", [""])[0]
+            db_cache = sync_daybook_prices(target_url, company)
+            party_l = party.lower()
+            phone = db_cache.get("party_phones", {}).get(party_l, "")
+            party_rates = db_cache.get("party_rates", {}).get(party_l, {})
+            return self.send_json_response({
+                "status": "success",
+                "party": party,
+                "phone": phone,
+                "rates": party_rates
+            })
 
         # 3. Real-time Pending Bills API for Agst Ref
         elif path == "/api/bills":

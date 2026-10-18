@@ -99,6 +99,16 @@ window.allBillsByParty = {};
 document.addEventListener("DOMContentLoaded", () => {
   initStates();
   initDefaults();
+  // Save party phone to memory
+  const pPhone = document.getElementById("party-phone");
+  if (pPhone) {
+    pPhone.addEventListener("change", () => {
+      const pName = document.getElementById("party-name")?.value.trim().toLowerCase();
+      if (pName && pPhone.value.trim()) {
+        localStorage.setItem("NFM_PARTY_PHONE_" + pName, pPhone.value.trim());
+      }
+    });
+  }
   addItemRow(); // Default initial row
   loadTallyMasters(); // Fetch real-time from Tally
   checkConnectorStatus();
@@ -188,7 +198,7 @@ function handlePartyInput(input) {
   dd.style.display = "block";
 }
 
-function selectParty(name, balance, gstin) {
+async function selectParty(name, balance, gstin) {
   document.getElementById("party-name").value = name;
   const balElem = document.getElementById("party-current-bal");
   if (balElem) {
@@ -201,6 +211,61 @@ function selectParty(name, balance, gstin) {
   }
   const dd = document.getElementById("party-autocomplete-dropdown");
   if (dd) dd.style.display = "none";
+
+  // Check saved mobile from localStorage
+  const savedPhone = localStorage.getItem("NFM_PARTY_PHONE_" + name.toLowerCase());
+  const phoneInput = document.getElementById("party-phone");
+  if (savedPhone && phoneInput) {
+    phoneInput.value = savedPhone;
+  }
+
+  // Fetch live party history from Tally
+  try {
+    const res = await fetch(`/api/party-details?name=${encodeURIComponent(name)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.phone && phoneInput) {
+        phoneInput.value = data.phone;
+        localStorage.setItem("NFM_PARTY_PHONE_" + name.toLowerCase(), data.phone);
+      }
+      window.activePartyRates = data.rates || {};
+
+      // If rows already exist, update them with this party's rates!
+      const rows = document.querySelectorAll("#items-tbody tr");
+      rows.forEach(r => {
+        const itemInput = r.querySelector(".item-name");
+        const itName = itemInput?.value.trim().toLowerCase();
+        if (itName && window.activePartyRates[itName]) {
+          const pInfo = window.activePartyRates[itName];
+          const rateInput = r.querySelector(".item-rate");
+          const hsnInput = r.querySelector(".item-hsn");
+          const unitInput = r.querySelector(".item-unit");
+          const gstSelect = r.querySelector(".item-gst");
+
+          if (rateInput && pInfo.rate > 0) rateInput.value = pInfo.rate.toFixed(2);
+          if (hsnInput && pInfo.hsn) hsnInput.value = pInfo.hsn;
+          if (unitInput && pInfo.unit) unitInput.value = pInfo.unit;
+          if (gstSelect && pInfo.gst) {
+            Array.from(gstSelect.options).forEach(opt => {
+              if (parseInt(opt.value, 10) === parseInt(pInfo.gst, 10)) opt.selected = true;
+            });
+          }
+
+          let badge = r.querySelector(".last-rate-badge");
+          if (!badge && rateInput) {
+            badge = document.createElement("div");
+            badge.className = "last-rate-badge";
+            rateInput.parentNode.appendChild(badge);
+          }
+          if (badge) badge.innerHTML = `🏷️ Last Billed: ₹${pInfo.rate.toFixed(2)}`;
+        }
+      });
+      recalculateTotals();
+    }
+  } catch (err) {
+    console.warn("Party details fetch error:", err);
+  }
+
   showToast(`Selected Customer: ${name}`, "info");
 }
 
@@ -343,56 +408,76 @@ function selectStockItem(rowId, itemName) {
   if (nameInput) nameInput.value = item.name;
 
   const hsnInput = row.querySelector(".item-hsn");
-  if (hsnInput) hsnInput.value = item.hsn || "";
-
   const unitInput = row.querySelector(".item-unit");
-  if (unitInput) unitInput.value = item.unit || "PCS";
-
-  // Check Party Price Memory
-  const partyName = document.getElementById("party-name")?.value.trim() || "";
-  const oldRate = getPartyLastRate(partyName, item.name);
   const rateInput = row.querySelector(".item-rate");
-  if (rateInput) {
-    const finalRate = (oldRate !== null && oldRate > 0) ? oldRate : (parseFloat(item.rate) || 0);
-    if (finalRate > 0) {
-      rateInput.value = parseFloat(finalRate).toFixed(2);
-    } else {
-      rateInput.value = "";
-      rateInput.placeholder = "Enter Rate (₹)";
-      setTimeout(() => {
-        rateInput.focus();
-        if (rateInput.select) rateInput.select();
-      }, 100);
-    }
+  const gstSelect = row.querySelector(".item-gst");
 
+  const itKey = item.name.toLowerCase();
+  const partyName = document.getElementById("party-name")?.value.trim() || "";
+
+  // 1. Check Party-Specific Rate from Tally Day Book or localStorage
+  let finalRate = 0;
+  let finalUnit = item.unit || "PCS";
+  let finalHsn = item.hsn || "";
+  let finalGst = item.gst || 18;
+  let isPartySpecific = false;
+
+  const partyRates = window.activePartyRates || {};
+  if (partyRates[itKey]) {
+    finalRate = partyRates[itKey].rate;
+    if (partyRates[itKey].unit) finalUnit = partyRates[itKey].unit;
+    if (partyRates[itKey].hsn) finalHsn = partyRates[itKey].hsn;
+    if (partyRates[itKey].gst) finalGst = partyRates[itKey].gst;
+    isPartySpecific = true;
+  } else {
+    // Check localStorage party memory
+    const savedPartyRate = getPartyLastRate(partyName, item.name);
+    if (savedPartyRate !== null && savedPartyRate > 0) {
+      finalRate = savedPartyRate;
+      isPartySpecific = true;
+    } else if (parseFloat(item.rate) > 0) {
+      finalRate = parseFloat(item.rate);
+    }
+  }
+
+  if (hsnInput) hsnInput.value = finalHsn;
+  if (unitInput) unitInput.value = finalUnit;
+  if (gstSelect) {
+    Array.from(gstSelect.options).forEach(opt => {
+      if (parseInt(opt.value, 10) === parseInt(finalGst, 10)) {
+        opt.selected = true;
+      }
+    });
+  }
+
+  if (rateInput) {
     let badge = row.querySelector(".last-rate-badge");
-    if (oldRate !== null && oldRate > 0) {
+    if (finalRate > 0) {
+      rateInput.value = finalRate.toFixed(2);
       if (!badge) {
         badge = document.createElement("div");
         badge.className = "last-rate-badge";
         rateInput.parentNode.appendChild(badge);
       }
-      badge.innerHTML = `🏷️ Old Rate: ₹${oldRate.toFixed(2)}`;
-    } else if (badge) {
-      badge.remove();
+      badge.innerHTML = isPartySpecific 
+        ? `🏷️ Last Billed: ₹${finalRate.toFixed(2)}` 
+        : `🏷️ Market Rate: ₹${finalRate.toFixed(2)}`;
+    } else {
+      rateInput.value = "";
+      rateInput.placeholder = "Enter Rate (₹)";
+      if (badge) badge.remove();
+      setTimeout(() => {
+        rateInput.focus();
+        if (rateInput.select) rateInput.select();
+      }, 100);
     }
-  }
-
-  const gstSelect = row.querySelector(".item-gst");
-  if (gstSelect) {
-    const itemGst = parseInt(item.gst || 18, 10);
-    Array.from(gstSelect.options).forEach(opt => {
-      if (parseInt(opt.value, 10) === itemGst) {
-        opt.selected = true;
-      }
-    });
   }
 
   const dd = document.getElementById(`item-dropdown-${rowId}`);
   if (dd) dd.style.display = "none";
 
   recalculateTotals();
-  showToast(`Item Loaded: ${item.name} (HSN ${item.hsn || '4819'}, ₹${parseFloat(item.rate || 0).toFixed(2)})`, "info");
+  showToast(`Loaded: ${item.name} (${finalUnit}, ${finalRate > 0 ? '₹' + finalRate.toFixed(2) : 'Manual Rate'})`, "info");
 }
 
 async function loadTallyMasters() {
