@@ -487,13 +487,13 @@ body.full-width-mode .grid-4 {
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  max-height: 250px;
+  max-height: 260px;
   overflow-y: auto;
   background: #ffffff;
   border: 1.5px solid var(--primary);
   border-radius: var(--radius-sm);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  z-index: 1050;
+  box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.3), 0 10px 15px -5px rgba(0, 0, 0, 0.15);
+  z-index: 99999 !important;
 }
 
 .autocomplete-item {
@@ -682,15 +682,16 @@ body:not(.full-width-mode) .item-table td::before,
   letter-spacing: 0.04em;
 }
 
-/* Index pill */
+/* Explicit 5-Row Clean Mobile Card Layout */
 body:not(.full-width-mode) .item-table td:nth-child(1),
 .item-table td:nth-child(1) {
-  grid-column: 1 / 3;
-  flex-direction: row;
-  align-items: center;
+  grid-row: 1 !important;
+  grid-column: 1 / 4 !important;
+  flex-direction: row !important;
+  align-items: center !important;
 }
 body:not(.full-width-mode) .item-table td:nth-child(1)::before,
-.item-table td:nth-child(1)::before { display: none; }
+.item-table td:nth-child(1)::before { display: none !important; }
 .item-table td:nth-child(1) .row-idx {
   background: #e2e8f0;
   color: #1e293b;
@@ -701,67 +702,92 @@ body:not(.full-width-mode) .item-table td:nth-child(1)::before,
   display: inline-block;
 }
 
-/* Delete button */
+/* Row 1 right: Delete button */
 body:not(.full-width-mode) .item-table td:nth-child(12),
 .item-table td:nth-child(12) {
-  grid-column: 5 / 7;
-  align-items: flex-end;
-  justify-content: center;
+  grid-row: 1 !important;
+  grid-column: 4 / 7 !important;
+  align-items: flex-end !important;
+  justify-content: center !important;
 }
 body:not(.full-width-mode) .item-table td:nth-child(12)::before,
-.item-table td:nth-child(12)::before { display: none; }
+.item-table td:nth-child(12)::before { display: none !important; }
 
-/* Item description: full width row */
+/* Row 2: Item description: full width */
 body:not(.full-width-mode) .item-table td:nth-child(2),
 .item-table td:nth-child(2) {
-  grid-column: 1 / 7;
+  grid-row: 2 !important;
+  grid-column: 1 / 7 !important;
+  position: relative !important;
+  z-index: 30 !important;
 }
 
-/* Row 2: Qty (cols 1-2), Unit (cols 3-4), Rate (cols 5-6) */
-body:not(.full-width-mode) .item-table td:nth-child(4),
-.item-table td:nth-child(4) { grid-column: 1 / 3; }
-body:not(.full-width-mode) .item-table td:nth-child(5),
-.item-table td:nth-child(5) { grid-column: 3 / 5; }
-body:not(.full-width-mode) .item-table td:nth-child(6),
-.item-table td:nth-child(6) { grid-column: 5 / 7; }
-
-/* Row 3: HSN (cols 1-2), GST (cols 3-4), Disc (cols 5-6) */
+/* Row 3: HSN (cols 1-2), Unit (cols 3-4), GST (cols 5-6) */
 body:not(.full-width-mode) .item-table td:nth-child(3),
-.item-table td:nth-child(3) { grid-column: 1 / 3; }
+.item-table td:nth-child(3) {
+  grid-row: 3 !important;
+  grid-column: 1 / 3 !important;
+}
+body:not(.full-width-mode) .item-table td:nth-child(5),
+.item-table td:nth-child(5) {
+  grid-row: 3 !important;
+  grid-column: 3 / 5 !important;
+}
 body:not(.full-width-mode) .item-table td:nth-child(9),
-.item-table td:nth-child(9) { grid-column: 3 / 5; }
-body:not(.full-width-mode) .item-table td:nth-child(7),
-.item-table td:nth-child(7) { grid-column: 5 / 7; }
+.item-table td:nth-child(9) {
+  grid-row: 3 !important;
+  grid-column: 5 / 7 !important;
+}
 
-/* Row 4: Summary pills */
+/* Row 4: Qty (cols 1-2), Rate (cols 3-4), Disc (cols 5-6) */
+body:not(.full-width-mode) .item-table td:nth-child(4),
+.item-table td:nth-child(4) {
+  grid-row: 4 !important;
+  grid-column: 1 / 3 !important;
+}
+body:not(.full-width-mode) .item-table td:nth-child(6),
+.item-table td:nth-child(6) {
+  grid-row: 4 !important;
+  grid-column: 3 / 5 !important;
+}
+body:not(.full-width-mode) .item-table td:nth-child(7),
+.item-table td:nth-child(7) {
+  grid-row: 4 !important;
+  grid-column: 5 / 7 !important;
+}
+
+/* Row 5: Calculations strip */
 body:not(.full-width-mode) .item-table td:nth-child(8),
 .item-table td:nth-child(8) {
-  grid-column: 1 / 3;
-  background: #f8fafc;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  font-size: 11px;
+  grid-row: 5 !important;
+  grid-column: 1 / 3 !important;
+  background: #f8fafc !important;
+  padding: 6px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+  font-size: 11px !important;
 }
 body:not(.full-width-mode) .item-table td:nth-child(10),
 .item-table td:nth-child(10) {
-  grid-column: 3 / 5;
-  background: #f8fafc;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  font-size: 11px;
+  grid-row: 5 !important;
+  grid-column: 3 / 5 !important;
+  background: #f8fafc !important;
+  padding: 6px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+  font-size: 11px !important;
 }
 body:not(.full-width-mode) .item-table td:nth-child(11),
 .item-table td:nth-child(11) {
-  grid-column: 5 / 7;
-  background: #ecfdf5;
-  color: #065f46;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 1px solid #a7f3d0;
-  font-size: 12px;
-  font-weight: 800;
+  grid-row: 5 !important;
+  grid-column: 5 / 7 !important;
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  padding: 6px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #a7f3d0 !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
 }
 
 /* Desktop Full-Width Mode: Table View */

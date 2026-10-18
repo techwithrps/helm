@@ -108,7 +108,8 @@ export default async function handler(req, res) {
         for (const m of matches) {
           const name = m[1].trim();
           if (name && !name.match(/^\d+$/) && !addedItems.has(name.toLowerCase())) {
-            items.push({ name, unit: "PCS", rate: 0.0, hsn: "4819", gst: 18 });
+            const hsnVal = /box|hamper|lid|carton/i.test(name) ? "4819" : "";
+            items.push({ name, unit: "PCS", rate: 0.0, hsn: hsnVal, gst: 18 });
             addedItems.add(name.toLowerCase());
           }
         }

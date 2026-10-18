@@ -292,16 +292,24 @@ function handleItemInput(input, rowId) {
     return;
   }
 
-  dd.innerHTML = filtered.slice(0, 10).map(it => `
-    <div class="autocomplete-item" onclick="selectStockItem(${rowId}, '${it.name.replace(/'/g, "\'")}')">
-      <div class="autocomplete-item-name">${highlightMatch(it.name, q)}</div>
-      <div class="autocomplete-item-meta">
-        <span class="autocomplete-item-hsn">HSN ${it.hsn || '4819'}</span>
-        <span class="autocomplete-item-badge">₹${parseFloat(it.rate || 0).toFixed(2)}/${it.unit || 'PCS'}</span>
-        <span class="autocomplete-item-badge" style="background: #eef2ff; color: #4338ca; border-color: #c7d2fe;">${it.gst || 18}% GST</span>
+  dd.innerHTML = filtered.slice(0, 10).map(it => {
+    const rateVal = parseFloat(it.rate || 0);
+    const rateBadge = rateVal > 0 ? `₹${rateVal.toFixed(2)}/${it.unit || 'PCS'}` : `✏️ Rate: Manual / ${it.unit || 'PCS'}`;
+    const hsnBadge = it.hsn ? `<span class="autocomplete-item-hsn">HSN ${it.hsn}</span>` : '';
+    const safeName = it.name.replace(/'/g, "\'");
+    return `
+      <div class="autocomplete-item" 
+           onmousedown="selectStockItem(${rowId}, '${safeName}')"
+           onclick="selectStockItem(${rowId}, '${safeName}')">
+        <div class="autocomplete-item-name">${highlightMatch(it.name, q)}</div>
+        <div class="autocomplete-item-meta">
+          ${hsnBadge}
+          <span class="autocomplete-item-badge">${rateBadge}</span>
+          <span class="autocomplete-item-badge" style="background: #eef2ff; color: #4338ca; border-color: #c7d2fe;">${it.gst || 18}% GST</span>
+        </div>
       </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
   dd.style.display = "block";
 }
 
@@ -335,7 +343,7 @@ function selectStockItem(rowId, itemName) {
   if (nameInput) nameInput.value = item.name;
 
   const hsnInput = row.querySelector(".item-hsn");
-  if (hsnInput) hsnInput.value = item.hsn || "4819";
+  if (hsnInput) hsnInput.value = item.hsn || "";
 
   const unitInput = row.querySelector(".item-unit");
   if (unitInput) unitInput.value = item.unit || "PCS";
@@ -346,9 +354,17 @@ function selectStockItem(rowId, itemName) {
   const rateInput = row.querySelector(".item-rate");
   if (rateInput) {
     const finalRate = (oldRate !== null && oldRate > 0) ? oldRate : (parseFloat(item.rate) || 0);
-    if (finalRate > 0 || !rateInput.value || parseFloat(rateInput.value) === 0) {
+    if (finalRate > 0) {
       rateInput.value = parseFloat(finalRate).toFixed(2);
+    } else {
+      rateInput.value = "";
+      rateInput.placeholder = "Enter Rate (₹)";
+      setTimeout(() => {
+        rateInput.focus();
+        if (rateInput.select) rateInput.select();
+      }, 100);
     }
+  }
 
     let badge = row.querySelector(".last-rate-badge");
     if (oldRate !== null && oldRate > 0) {

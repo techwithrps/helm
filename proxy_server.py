@@ -179,7 +179,8 @@ def fetch_realtime_items(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPA
             if not name or name.isdigit() or name.lower() in added_items:
                 continue
 
-            entry = {"name": name, "unit": "PCS", "rate": 0.0, "hsn": "4819", "gst": 18}
+            hsn_val = "4819" if any(k in name.lower() for k in ["box", "hamper", "lid", "carton"]) else ""
+            entry = {"name": name, "unit": "PCS", "rate": 0.0, "hsn": hsn_val, "gst": 18}
             items.append(entry)
             added_items.add(name.lower())
 
