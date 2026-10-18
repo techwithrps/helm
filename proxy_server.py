@@ -141,15 +141,54 @@ def fetch_realtime_ledgers(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COM
         return {"status": "success", "source": "verified_cache", "debtors": FALLBACK_DEBTORS, "creditors": [], "warning": str(e)}
 
 
+
 _DAYBOOK_PRICE_CACHE = {"time": 0, "items": {}, "party_rates": {}, "party_phones": {}}
 
 def sync_daybook_prices(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPANY):
-    """Parses real-time Tally Day Book to extract actual billed rates, units, HSNs, GST rates and party pricing."""
+    """Parses real-time Tally Stock Summary + Day Book to extract actual selling rates, units, HSNs, GST rates and party pricing."""
     now = time.time()
     if _DAYBOOK_PRICE_CACHE["time"] > 0 and (now - _DAYBOOK_PRICE_CACHE["time"] < 60):
         return _DAYBOOK_PRICE_CACHE
 
-    payload = f"""<ENVELOPE>
+    item_prices = {}
+    party_rates = {}
+    party_phones = {}
+
+    # 1. Fetch Tally's native Stock Summary (covers 1,245+ active items with rates & units)
+    try:
+        payload_ss = f"""<ENVELOPE>
+  <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>Stock Summary</ID></HEADER>
+  <BODY><DESC><STATICVARIABLES><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT><SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY></STATICVARIABLES></DESC></BODY>
+</ENVELOPE>"""
+        xml_ss = post_to_tally(payload_ss, target_url, timeout=12)
+        clean_ss = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_ss)
+        clean_ss = re.sub(r'&#x?[0-9a-fA-F]+;', ' ', clean_ss)
+
+        ss_matches = re.findall(r'<DSPDISPNAME>([^<]+)</DSPDISPNAME>[\s\S]*?<DSPCLQTY>([^<]+)</DSPCLQTY>[\s\S]*?<DSPCLRATE>([^<]+)</DSPCLRATE>', clean_ss)
+        for name, qty_str, rate_str in ss_matches:
+            name_clean = name.strip()
+            rm = re.search(r'([\d\.]+)', rate_str)
+            rate_val = float(rm.group(1)) if rm else 0.0
+
+            # Extract unit from Qty (e.g. '159.00 Pcs')
+            um = re.search(r'[\d\.]+\s+([A-Za-z]+)', qty_str)
+            unit_val = um.group(1).strip() if um else 'PCS'
+
+            hsn_val = "4819" if any(k in name_clean.lower() for k in ["box", "hamper", "lid", "carton"]) else ""
+            item_prices[name_clean.lower()] = {
+                'name': name_clean,
+                'rate': rate_val,
+                'unit': unit_val,
+                'gst': 18,
+                'hsn': hsn_val
+            }
+        print(f"Extracted {len(item_prices)} stock items from Tally Stock Summary")
+    except Exception as e:
+        print(f"Stock Summary sync warning: {e}")
+
+    # 2. Fetch Day Book (extracts recent actual invoiced selling rates, exact GST %, exact HSN, and client-specific rates)
+    try:
+        payload_db = f"""<ENVELOPE>
   <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>Day Book</ID></HEADER>
   <BODY>
     <DESC>
@@ -162,15 +201,11 @@ def sync_daybook_prices(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPAN
     </DESC>
   </BODY>
 </ENVELOPE>"""
-    try:
-        xml_data = post_to_tally(payload, target_url, timeout=18)
+        xml_data = post_to_tally(payload_db, target_url, timeout=18)
         clean_xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', xml_data)
         clean_xml = re.sub(r'&#x?[0-9a-fA-F]+;', ' ', clean_xml)
         
         vchs = re.findall(r'<VOUCHER [^>]*>([\s\S]*?)</VOUCHER>', clean_xml)
-        item_prices = {}
-        party_rates = {}
-        party_phones = {}
 
         for v in vchs:
             pm = re.search(r'<PARTYLEDGERNAME>([^<]+)</PARTYLEDGERNAME>', v)
@@ -218,6 +253,7 @@ def sync_daybook_prices(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPAN
                     'gst': gst_val,
                     'hsn': hsn_val
                 }
+                # Day Book has actual customer sales rate, which overrides stock closing rate
                 item_prices[item_name.lower()] = info
 
                 if party:
@@ -225,14 +261,14 @@ def sync_daybook_prices(target_url=DEFAULT_CONNECTOR_URL, company=DEFAULT_COMPAN
                         party_rates[party_l] = {}
                     party_rates[party_l][item_name.lower()] = info
 
-        _DAYBOOK_PRICE_CACHE["time"] = now
-        _DAYBOOK_PRICE_CACHE["items"] = item_prices
-        _DAYBOOK_PRICE_CACHE["party_rates"] = party_rates
-        _DAYBOOK_PRICE_CACHE["party_phones"] = party_phones
-        print(f"Synced Day Book: {len(item_prices)} items with rates, {len(party_rates)} party price books")
+        print(f"Day Book merged: {len(item_prices)} items total with real selling rates, {len(party_rates)} party price books")
     except Exception as e:
         print(f"Day Book sync warning: {e}")
 
+    _DAYBOOK_PRICE_CACHE["time"] = now
+    _DAYBOOK_PRICE_CACHE["items"] = item_prices
+    _DAYBOOK_PRICE_CACHE["party_rates"] = party_rates
+    _DAYBOOK_PRICE_CACHE["party_phones"] = party_phones
     return _DAYBOOK_PRICE_CACHE
 
 

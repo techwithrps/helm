@@ -1271,3 +1271,50 @@ body.full-width-mode .mobile-sticky-bar {
     letter-spacing: 0.04em !important;
   }
 }
+
+/* Client Past Rate Note Banner & Buttons */
+.last-rate-note {
+  margin-top: 5px;
+  width: 100%;
+}
+
+.last-rate-note-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #92400e;
+  line-height: 1.35;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.btn-apply-rate {
+  background: #f59e0b;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+  transition: all 0.15s ease;
+}
+
+.btn-apply-rate:hover {
+  background: #d97706;
+  transform: translateY(-1px);
+}
+
+.btn-apply-rate.applied {
+  background: #10b981 !important;
+  color: #ffffff !important;
+  cursor: default !important;
+  transform: none !important;
+}
