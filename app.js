@@ -1032,7 +1032,7 @@ function generateTallyXml() {
   const tallyDate = rawDate.replace(/-/g, ""); // YYYYMMDD
   const partyName = document.getElementById("party-name").value.trim() || "Cash";
   const partyGstin = document.getElementById("party-gstin").value.trim();
-  const salesLedger = document.getElementById("sales-ledger").value.trim() || "Sales Account";
+  const salesLedger = document.getElementById("sales-ledger").value.trim() || "Gst Sales";
   const placeOfSupply = document.getElementById("place-of-supply").value;
   const isIntraState = (placeOfSupply === appConfig.companyStateCode);
   const narration = document.getElementById("voucher-narration").value.trim();
