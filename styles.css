@@ -1194,3 +1194,54 @@ body.full-width-mode .mobile-sticky-bar {
 .print-only-header {
   display: none;
 }
+
+.voucher-header-row {
+  display: grid !important;
+  grid-template-columns: 1.25fr 1fr !important;
+  gap: 8px !important;
+}
+
+@media (max-width: 900px) {
+  .item-table thead {
+    display: none !important;
+  }
+  .item-table,
+  .item-table tbody {
+    display: block !important;
+    width: 100% !important;
+  }
+  .item-table tr {
+    display: grid !important;
+    grid-template-columns: repeat(6, 1fr) !important;
+    gap: 8px !important;
+    background: #ffffff !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    padding: 12px !important;
+    margin-bottom: 12px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+  }
+  .item-table td {
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 0 !important;
+    border: none !important;
+    min-width: 0 !important;
+  }
+  .item-table td input,
+  .item-table td select {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .item-table td::before {
+    display: block !important;
+    content: attr(data-label) !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    color: var(--text-muted) !important;
+    text-transform: uppercase !important;
+    margin-bottom: 3px !important;
+    letter-spacing: 0.04em !important;
+  }
+}

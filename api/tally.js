@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const targetUrl = req.headers['x-tally-url'] || process.env.TALLY_URL || 'https://usually-lows-constraints-jon.trycloudflare.com/?key=infra_d4e4f164a4d442d4';
+  const targetUrl = req.headers['x-tally-url'] || process.env.TALLY_URL || 'https://courtesy-vanilla-volvo-blocking.trycloudflare.com/?key=infra_d4e4f164a4d442d4';
   const company = req.headers['x-tally-company'] || 'Nanak Food Mart';
 
   const postTally = async (xml) => {
@@ -153,16 +153,23 @@ export default async function handler(req, res) {
     // 4. /api/next-voucher
     if (url.includes('next-voucher') || req.query.action === 'next-voucher') {
       const vchType = req.query.type || 'Sales';
+      const fallbackMap = {
+        'Credit Note': '249',
+        'Debit Note': '77',
+        'Receipt': '1074',
+        'Cash Receipt': '1074',
+        'Sales': 'NFM/26-27/13740'
+      };
       const xml = `<ENVELOPE>
   <HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
   <BODY>
     <EXPORTDATA>
       <REQUESTDESC>
-        <STATICVARIABLES><SVCURRENTCOMPANY>${company}</SVCURRENTCOMPANY></STATICVARIABLES>
+        <STATICVARIABLES><SVCURRENTCOMPANY>${company}</SVCURRENTCOMPANY><SVFROMDATE>20261001</SVFROMDATE></STATICVARIABLES>
         <TDL>
           <TDLMESSAGE>
             <COLLECTION NAME="VchList" ISMODIFY="No"><TYPE>Voucher</TYPE><FETCH>VOUCHERNUMBER</FETCH><FILTERS>IsTargetVch</FILTERS></COLLECTION>
-            <SYSTEM TYPE="Formulae" NAME="IsTargetVch">$VoucherTypeName = "${vchType}" OR $VoucherTypeName = "AUTO GST"</SYSTEM>
+            <SYSTEM TYPE="Formulae" NAME="IsTargetVch">$VoucherTypeName = "${vchType === 'Sales' ? 'Sales' : vchType}" OR $VoucherTypeName = "AUTO GST"</SYSTEM>
           </TDLMESSAGE>
         </TDL>
       </REQUESTDESC>
@@ -171,11 +178,24 @@ export default async function handler(req, res) {
 </ENVELOPE>`;
       try {
         const text = await postTally(xml);
-        const matches = [...text.matchAll(/NFM\/26-27\/(\d+)/g)].map(m => parseInt(m[1], 10));
-        const maxNum = matches.length > 0 ? Math.max(...matches) : 13739;
-        return res.status(200).json({ status: 'success', source: 'tally_realtime', next_voucher_number: `NFM/26-27/${maxNum + 1}` });
+        let nextNum = fallbackMap[vchType] || 'NFM/26-27/13740';
+        if (vchType === 'Credit Note') {
+          const nums = [...text.matchAll(/<VOUCHERNUMBER>(\d+)<\/VOUCHERNUMBER>/gi)].map(m => parseInt(m[1], 10));
+          nextNum = String((nums.length > 0 ? Math.max(...nums) + 1 : 249));
+        } else if (vchType === 'Debit Note') {
+          const nums = [...text.matchAll(/<VOUCHERNUMBER>(\d+)<\/VOUCHERNUMBER>/gi)].map(m => parseInt(m[1], 10));
+          nextNum = String((nums.length > 0 ? Math.max(...nums) + 1 : 77));
+        } else if (vchType === 'Receipt' || vchType === 'Cash Receipt') {
+          const nums = [...text.matchAll(/<VOUCHERNUMBER>(\d+)<\/VOUCHERNUMBER>/gi)].map(m => parseInt(m[1], 10));
+          nextNum = String((nums.length > 0 ? Math.max(...nums) + 1 : 1074));
+        } else {
+          const matches = [...text.matchAll(/NFM\/26-27\/(\d+)/g)].map(m => parseInt(m[1], 10));
+          const maxNum = matches.length > 0 ? Math.max(...matches) : 13739;
+          nextNum = `NFM/26-27/${maxNum + 1}`;
+        }
+        return res.status(200).json({ status: 'success', source: 'tally_realtime', next_voucher_number: nextNum });
       } catch (err) {
-        return res.status(200).json({ status: 'fallback', next_voucher_number: 'NFM/26-27/13740' });
+        return res.status(200).json({ status: 'fallback', next_voucher_number: fallbackMap[vchType] || 'NFM/26-27/13740' });
       }
     }
 

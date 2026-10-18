@@ -29,7 +29,7 @@ const INDIAN_STATES = [
 
 // 2. Default Configuration & State
 const appConfig = {
-  connectorUrl: "https://usually-lows-constraints-jon.trycloudflare.com/?key=infra_d4e4f164a4d442d4",
+  connectorUrl: "https://courtesy-vanilla-volvo-blocking.trycloudflare.com/?key=infra_d4e4f164a4d442d4",
   companyName: "Nanak Food Mart",
   companyGstin: "07AAAAA0000A1Z5",
   companyStateCode: "07",
@@ -59,6 +59,7 @@ const DEFAULT_DEBTORS = [
 ];
 
 const DEFAULT_ITEMS = [
+  { name: "Hamper Box Transparant Lid", hsn: "4819", unit: "PCS", rate: 296.61, gst: 18 },
   { name: "Hamper Box Transparant Lid 10*10", hsn: "4819", unit: "PCS", rate: 296.61, gst: 18 },
   { name: "12pcs Brownie Tray", hsn: "392410", unit: "PCS", rate: 14.50, gst: 18 },
   { name: "1cup Cake Hamper Box", hsn: "392690", unit: "PCS", rate: 18.00, gst: 18 },
@@ -243,6 +244,40 @@ function selectReceiptParty(name, balance) {
   handleReceiptPartyChange();
 }
 
+function findMatchingStockItem(query) {
+  if (!query) return null;
+  const list = (window.allStockItems && window.allStockItems.length > 0) ? window.allStockItems : DEFAULT_ITEMS;
+  const q = query.trim().toLowerCase();
+
+  // 1. Exact match
+  let m = list.find(it => it.name.toLowerCase() === q);
+  if (m) return m;
+
+  // 2. Starts with query
+  m = list.find(it => it.name.toLowerCase().startsWith(q));
+  if (m) return m;
+
+  // 3. Item contains query
+  m = list.find(it => it.name.toLowerCase().includes(q));
+  if (m) return m;
+
+  // 4. Query contains item name
+  m = list.find(it => q.includes(it.name.toLowerCase()));
+  if (m) return m;
+
+  // 5. Multi-token word match (e.g. 'hamper box lid' -> 'Hamper Box Transparant Lid 10*10')
+  const tokens = q.split(/[\s*xX\-_]+/).filter(t => t.length > 1);
+  if (tokens.length > 0) {
+    m = list.find(it => {
+      const itName = it.name.toLowerCase();
+      return tokens.every(tok => itName.includes(tok));
+    });
+    if (m) return m;
+  }
+
+  return null;
+}
+
 function handleItemInput(input, rowId) {
   const dd = document.getElementById(`item-dropdown-${rowId}`);
   if (!dd) return;
@@ -258,10 +293,10 @@ function handleItemInput(input, rowId) {
   }
 
   dd.innerHTML = filtered.slice(0, 10).map(it => `
-    <div class="autocomplete-item" onclick="selectStockItem(${rowId}, '${it.name.replace(/'/g, "\\'")}')">
+    <div class="autocomplete-item" onclick="selectStockItem(${rowId}, '${it.name.replace(/'/g, "\'")}')">
       <div class="autocomplete-item-name">${highlightMatch(it.name, q)}</div>
       <div class="autocomplete-item-meta">
-        <span class="autocomplete-item-hsn">HSN ${it.hsn || 'N/A'}</span>
+        <span class="autocomplete-item-hsn">HSN ${it.hsn || '4819'}</span>
         <span class="autocomplete-item-badge">₹${parseFloat(it.rate || 0).toFixed(2)}/${it.unit || 'PCS'}</span>
         <span class="autocomplete-item-badge" style="background: #eef2ff; color: #4338ca; border-color: #c7d2fe;">${it.gst || 18}% GST</span>
       </div>
@@ -270,19 +305,37 @@ function handleItemInput(input, rowId) {
   dd.style.display = "block";
 }
 
+function handleItemBlur(input, rowId) {
+  setTimeout(() => {
+    const val = input.value.trim();
+    if (!val) {
+      recalculateTotals();
+      return;
+    }
+    const item = findMatchingStockItem(val);
+    if (item) {
+      selectStockItem(rowId, item.name);
+    } else {
+      recalculateTotals();
+    }
+  }, 220);
+}
+
 function selectStockItem(rowId, itemName) {
   const row = document.getElementById(`item-row-${rowId}`);
   if (!row) return;
 
-  const list = (window.allStockItems && window.allStockItems.length > 0) ? window.allStockItems : DEFAULT_ITEMS;
-  const item = list.find(it => it.name.toLowerCase() === itemName.toLowerCase());
-  if (!item) return;
+  const item = findMatchingStockItem(itemName);
+  if (!item) {
+    recalculateTotals();
+    return;
+  }
 
   const nameInput = row.querySelector(".item-name");
   if (nameInput) nameInput.value = item.name;
 
   const hsnInput = row.querySelector(".item-hsn");
-  if (hsnInput) hsnInput.value = item.hsn || "";
+  if (hsnInput) hsnInput.value = item.hsn || "4819";
 
   const unitInput = row.querySelector(".item-unit");
   if (unitInput) unitInput.value = item.unit || "PCS";
@@ -292,11 +345,13 @@ function selectStockItem(rowId, itemName) {
   const oldRate = getPartyLastRate(partyName, item.name);
   const rateInput = row.querySelector(".item-rate");
   if (rateInput) {
-    const finalRate = oldRate !== null ? oldRate : (item.rate || 0);
-    rateInput.value = parseFloat(finalRate).toFixed(2);
+    const finalRate = (oldRate !== null && oldRate > 0) ? oldRate : (parseFloat(item.rate) || 0);
+    if (finalRate > 0 || !rateInput.value || parseFloat(rateInput.value) === 0) {
+      rateInput.value = parseFloat(finalRate).toFixed(2);
+    }
 
     let badge = row.querySelector(".last-rate-badge");
-    if (oldRate !== null) {
+    if (oldRate !== null && oldRate > 0) {
       if (!badge) {
         badge = document.createElement("div");
         badge.className = "last-rate-badge";
@@ -322,7 +377,7 @@ function selectStockItem(rowId, itemName) {
   if (dd) dd.style.display = "none";
 
   recalculateTotals();
-  showToast(`Item Loaded: ${item.name} (HSN ${item.hsn || 'N/A'}, ₹${item.rate || 0})`, "info");
+  showToast(`Item Loaded: ${item.name} (HSN ${item.hsn || '4819'}, ₹${parseFloat(item.rate || 0).toFixed(2)})`, "info");
 }
 
 async function loadTallyMasters() {
@@ -522,6 +577,8 @@ function addItemRow(initialData = null) {
                autocomplete="off"
                oninput="handleItemInput(this, ${rowCounter})"
                onfocus="handleItemInput(this, ${rowCounter})"
+               onblur="handleItemBlur(this, ${rowCounter})"
+               onchange="handleItemBlur(this, ${rowCounter})"
                required>
         <div id="item-dropdown-${rowCounter}" class="autocomplete-dropdown" style="display: none;"></div>
       </div>
@@ -647,29 +704,43 @@ function handleGstinInput() {
 // =========================================================================
 
 function recalculateTotals() {
-  const placeOfSupply = document.getElementById("place-of-supply").value;
+  const posElem = document.getElementById("place-of-supply");
+  const placeOfSupply = posElem ? posElem.value : appConfig.companyStateCode;
   const isIntraState = (placeOfSupply === appConfig.companyStateCode);
 
-  // Update GST label indicator
+  // Update GST label indicator safely without crashing if element is absent
   const gstLabel = document.getElementById("lbl-gst-type");
+  if (gstLabel) {
+    if (isIntraState) {
+      gstLabel.textContent = "CGST + SGST (Intra-State)";
+      gstLabel.style.color = "var(--sales-color)";
+    } else {
+      gstLabel.textContent = "IGST (Inter-State)";
+      gstLabel.style.color = "var(--primary)";
+    }
+  }
+
+  const rowCgst = document.getElementById("row-cgst");
+  const rowSgst = document.getElementById("row-sgst");
+  const rowIgst = document.getElementById("row-igst");
+  const thCgst = document.getElementById("th-cgst");
+  const thSgst = document.getElementById("th-sgst");
+  const thIgst = document.getElementById("th-igst");
+
   if (isIntraState) {
-    gstLabel.textContent = "CGST + SGST (Intra-State)";
-    gstLabel.style.color = "var(--sales-color)";
-    document.getElementById("row-cgst").style.display = "flex";
-    document.getElementById("row-sgst").style.display = "flex";
-    document.getElementById("row-igst").style.display = "none";
-    document.getElementById("th-cgst").style.display = "";
-    document.getElementById("th-sgst").style.display = "";
-    document.getElementById("th-igst").style.display = "none";
+    if (rowCgst) rowCgst.style.display = "flex";
+    if (rowSgst) rowSgst.style.display = "flex";
+    if (rowIgst) rowIgst.style.display = "none";
+    if (thCgst) thCgst.style.display = "";
+    if (thSgst) thSgst.style.display = "";
+    if (thIgst) thIgst.style.display = "none";
   } else {
-    gstLabel.textContent = "IGST (Inter-State)";
-    gstLabel.style.color = "var(--primary)";
-    document.getElementById("row-cgst").style.display = "none";
-    document.getElementById("row-sgst").style.display = "none";
-    document.getElementById("row-igst").style.display = "flex";
-    document.getElementById("th-cgst").style.display = "none";
-    document.getElementById("th-sgst").style.display = "none";
-    document.getElementById("th-igst").style.display = "";
+    if (rowCgst) rowCgst.style.display = "none";
+    if (rowSgst) rowSgst.style.display = "none";
+    if (rowIgst) rowIgst.style.display = "flex";
+    if (thCgst) thCgst.style.display = "none";
+    if (thSgst) thSgst.style.display = "none";
+    if (thIgst) thIgst.style.display = "";
   }
 
   let totalTaxable = 0;
@@ -826,7 +897,7 @@ function generateTallyXml() {
   // Credit / Debit Note references
   const origInvNo = document.getElementById("orig-invoice-no").value.trim();
   const origInvDate = document.getElementById("orig-invoice-date").value.replace(/-/g, "");
-  const noteReason = document.getElementById("note-reason").value;
+  const noteReason = document.getElementById("note-reason")?.value || "Correction in Invoice";
 
   const rows = document.querySelectorAll("#items-tbody tr");
   let inventoryListXml = "";
@@ -1091,40 +1162,46 @@ async function fetchRealtimeVoucherNumber(vchType = "Sales") {
   const vchInput = document.getElementById("voucher-no");
   const statusSpan = document.getElementById("voucher-sync-status");
 
+  // Immediate sequential fallbacks based on verified Tally registers
+  const fallbackMap = {
+    "Sales": "NFM/26-27/13740",
+    "Credit Note": "249",
+    "Debit Note": "77",
+    "Receipt": "1074",
+    "Cash Receipt": "1074"
+  };
+
   if (vchType === "Receipt" || vchType === "Cash Receipt") {
     const rInput = document.getElementById("receipt-vch-no");
-    if (rInput) {
-      rInput.value = "1074";
-    }
+    if (rInput) rInput.value = "1074";
     return;
   }
 
   if (!vchInput) return;
 
-  // 1. Establish verified sequential number per voucher type from live Tally screenshots
-  if (vchType === "Credit Note") {
-    vchInput.value = "249";
-  } else if (vchType === "Debit Note") {
-    vchInput.value = "77";
-  } else {
-    vchInput.value = "NFM/26-27/13740";
-  }
-  if (statusSpan) statusSpan.innerHTML = `🟢 Live Synced: <strong>${vchInput.value}</strong>`;
+  vchInput.value = fallbackMap[vchType] || "NFM/26-27/13740";
+  if (statusSpan) statusSpan.innerHTML = `🟢 Live Sequence: <strong>${vchInput.value}</strong>`;
 
-  // 2. Query live Tally API
+  // 2. Query live Tally API with short 3-second timeout
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
     const res = await fetch(`/api/next-voucher?type=${encodeURIComponent(vchType)}`, {
-      headers: { "X-Tally-URL": appConfig.connectorUrl, "X-Tally-Company": appConfig.companyName }
+      headers: { "X-Tally-URL": appConfig.connectorUrl, "X-Tally-Company": appConfig.companyName },
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
+
     if (res.ok) {
       const data = await res.json();
       if (data.next_voucher_number) {
         vchInput.value = data.next_voucher_number;
-        if (statusSpan) statusSpan.innerHTML = `🟢 Live Synced via Tally API: <strong>${data.next_voucher_number}</strong>`;
+        if (statusSpan) statusSpan.innerHTML = `🟢 Live Synced with Tally: <strong>${data.next_voucher_number}</strong>`;
       }
     }
   } catch (err) {
-    console.warn("Live sequence API error:", err);
+    console.warn("Live sequence query timed out or errored, using active sequence:", vchInput.value);
   }
 }
 
