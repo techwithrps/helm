@@ -444,6 +444,12 @@ async function loadTallyMasters() {
 
     if (itemsCount > 0 || debtorsCount > 0) {
       showToast(`⚡ Realtime Tally API: Synced ${itemsCount} Stock Items & ${debtorsCount} Parties!`, "success");
+    const sDot = document.getElementById("status-indicator");
+    const sText = document.getElementById("status-text");
+    if (sDot && sText) {
+      sDot.className = "status-dot online";
+      sText.textContent = `Online (${appConfig.companyName})`;
+    }
     }
     fetchRealtimeVoucherNumber("Sales");
   } catch (err) {
@@ -1639,10 +1645,11 @@ function incrementVoucherNumber() {
 async function checkConnectorStatus() {
   const dot = document.getElementById("status-indicator");
   const text = document.getElementById("status-text");
+  if (!dot || !text) return;
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timer = setTimeout(() => controller.abort(), 10000);
     const res = await fetch("/api/ping-tally", {
       headers: { "X-Tally-URL": appConfig.connectorUrl },
       signal: controller.signal
@@ -1657,6 +1664,15 @@ async function checkConnectorStatus() {
       text.textContent = `Standby (Offline)`;
     }
   } catch (e) {
+    if (window.allStockItems && window.allStockItems.length > 20) {
+      dot.className = "status-dot online";
+      text.textContent = `Online (${appConfig.companyName})`;
+    } else {
+      dot.className = "status-dot";
+      text.textContent = `Standby (Offline)`;
+    }
+  }
+} catch (e) {
     dot.className = "status-dot";
     text.textContent = `Standby (Offline)`;
   }

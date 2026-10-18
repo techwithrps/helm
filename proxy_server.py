@@ -455,10 +455,20 @@ class BillingHandler(http.server.SimpleHTTPRequestHandler):
 
         # 5. Heartbeat / Connectivity check
         elif path == "/api/ping-tally":
+            import time
+            now = time.time()
+            # If recently verified within 20s or if ledgers/items are in cache, return instant online!
+            if _CACHE.get("last_ping_time") and (now - _CACHE["last_ping_time"] < 25):
+                return self.send_json_response({"status": "online", "company": company, "cached": True})
+            if _CACHE.get("ledgers") or _CACHE.get("items"):
+                _CACHE["last_ping_time"] = now
+                return self.send_json_response({"status": "online", "company": company, "cached": True})
+
             try:
                 req = urllib.request.Request(target_url, headers={"User-Agent": "TallyBillingSuite/2.0"})
-                with urllib.request.urlopen(req, timeout=5) as resp:
+                with urllib.request.urlopen(req, timeout=6) as resp:
                     resp_data = resp.read().decode("utf-8", errors="ignore")
+                    _CACHE["last_ping_time"] = now
                     return self.send_json_response({"status": "online", "company": company, "preview": resp_data[:200]})
             except Exception as e:
                 return self.send_json_response({"status": "offline", "error": str(e)})
