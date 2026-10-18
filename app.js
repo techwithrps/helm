@@ -364,7 +364,6 @@ function selectStockItem(rowId, itemName) {
         if (rateInput.select) rateInput.select();
       }, 100);
     }
-  }
 
     let badge = row.querySelector(".last-rate-badge");
     if (oldRate !== null && oldRate > 0) {
@@ -1671,10 +1670,6 @@ async function checkConnectorStatus() {
       dot.className = "status-dot";
       text.textContent = `Standby (Offline)`;
     }
-  }
-} catch (e) {
-    dot.className = "status-dot";
-    text.textContent = `Standby (Offline)`;
   }
 }
 
