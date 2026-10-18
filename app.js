@@ -1083,16 +1083,27 @@ function generateTallyXml() {
     // Sales: Inventory amount is negative (Credit to Sales)
     // Credit Note: Inventory amount is positive (Debit to Sales Return)
     // Debit Note: Inventory amount is negative (Credit to Purchase Return)
-    const invAmount = isCreditNote ? taxable : -taxable;
+    // In Tally XML double-entry for Sales Invoice:
+    // Sales Inventory & Accounting Allocations are CREDITED (Positive amount in Tally XML: +taxable)
+    // Credit Note (Sales Return) is DEBITED (Negative amount: -taxable)
+    const invAmount = isCreditNote ? -taxable : taxable;
 
     inventoryListXml += `
         <ALLINVENTORYENTRIES.LIST>
           <STOCKITEMNAME>${escapeXml(itemName)}</STOCKITEMNAME>
           <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
           <RATE>${rate.toFixed(2)}/${unit}</RATE>
-          <ACTUALQTY>${qty} ${unit}</ACTUALQTY>
-          <BILLEDQTY>${qty} ${unit}</BILLEDQTY>
+          <ACTUALQTY> ${qty} ${unit}</ACTUALQTY>
+          <BILLEDQTY> ${qty} ${unit}</BILLEDQTY>
           <AMOUNT>${invAmount.toFixed(2)}</AMOUNT>
+          ${discPercent > 0 ? `<DISCOUNT>${discPercent.toFixed(2)}</DISCOUNT>` : ""}
+          <BATCHALLOCATIONS.LIST>
+            <GODOWNNAME>Main Location</GODOWNNAME>
+            <BATCHNAME>Primary Batch</BATCHNAME>
+            <AMOUNT>${invAmount.toFixed(2)}</AMOUNT>
+            <ACTUALQTY> ${qty} ${unit}</ACTUALQTY>
+            <BILLEDQTY> ${qty} ${unit}</BILLEDQTY>
+          </BATCHALLOCATIONS.LIST>
           <ACCOUNTINGALLOCATIONS.LIST>
             <LEDGERNAME>${escapeXml(salesLedger)}</LEDGERNAME>
             <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
@@ -1112,7 +1123,10 @@ function generateTallyXml() {
   // Credit Note: Party is Credited (Negative)
   // Debit Note: Party is Debited (Positive)
   const isCreditNote = (vchType === "Credit Note");
-  const partyAmount = isCreditNote ? -roundedGrandTotal : roundedGrandTotal;
+  // In Tally Invoice XML:
+  // Sales: Party is DEBITED -> In Tally XML representation, Debit is -roundedGrandTotal
+  // Credit Note: Party is CREDITED -> Credit is +roundedGrandTotal
+  const partyAmount = isCreditNote ? roundedGrandTotal : -roundedGrandTotal;
   const partyPositive = isCreditNote ? "No" : "Yes";
 
   let ledgerEntriesXml = `
@@ -1124,10 +1138,10 @@ function generateTallyXml() {
           ${partyGstin ? `<PARTYGSTIN>${partyGstin}</PARTYGSTIN>` : ""}
         </LEDGERENTRIES.LIST>`;
 
-  // Tax Ledgers
+  // Tax Ledgers (Credits in Sales Invoice -> Positive amounts in Tally XML)
   if (isIntraState) {
     if (totalCgst > 0) {
-      const cgstAmt = isCreditNote ? totalCgst : -totalCgst;
+      const cgstAmt = isCreditNote ? -totalCgst : totalCgst;
       ledgerEntriesXml += `
         <LEDGERENTRIES.LIST>
           <LEDGERNAME>CGST...</LEDGERNAME>
@@ -1136,7 +1150,7 @@ function generateTallyXml() {
         </LEDGERENTRIES.LIST>`;
     }
     if (totalSgst > 0) {
-      const sgstAmt = isCreditNote ? totalSgst : -totalSgst;
+      const sgstAmt = isCreditNote ? -totalSgst : totalSgst;
       ledgerEntriesXml += `
         <LEDGERENTRIES.LIST>
           <LEDGERNAME>SGST...</LEDGERNAME>
@@ -1146,7 +1160,7 @@ function generateTallyXml() {
     }
   } else {
     if (totalIgst > 0) {
-      const igstAmt = isCreditNote ? totalIgst : -totalIgst;
+      const igstAmt = isCreditNote ? -totalIgst : totalIgst;
       ledgerEntriesXml += `
         <LEDGERENTRIES.LIST>
           <LEDGERNAME>IGST...</LEDGERNAME>
@@ -1158,7 +1172,7 @@ function generateTallyXml() {
 
   // Freight Charge Ledger
   if (freight > 0) {
-    const freightAmt = isCreditNote ? freight : -freight;
+    const freightAmt = isCreditNote ? -freight : freight;
     ledgerEntriesXml += `
         <LEDGERENTRIES.LIST>
           <LEDGERNAME>Freight Charges</LEDGERNAME>
@@ -1167,13 +1181,14 @@ function generateTallyXml() {
         </LEDGERENTRIES.LIST>`;
   }
 
-  // Round Off Ledger
+  // Round Off Ledger (Positive = Credit, Negative = Debit)
   if (Math.abs(roundOff) > 0.001) {
-    const roAmt = isCreditNote ? roundOff : -roundOff;
+    // If rounded total > raw total, we added fraction (Credit to Round Off)
+    const roAmt = isCreditNote ? -roundOff : roundOff;
     ledgerEntriesXml += `
         <LEDGERENTRIES.LIST>
           <LEDGERNAME>Round Off</LEDGERNAME>
-          <ISDEEMEDPOSITIVE>${roAmt < 0 ? "No" : "Yes"}</ISDEEMEDPOSITIVE>
+          <ISDEEMEDPOSITIVE>${roAmt < 0 ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
           <AMOUNT>${roAmt.toFixed(2)}</AMOUNT>
         </LEDGERENTRIES.LIST>`;
   }
