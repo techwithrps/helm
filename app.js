@@ -1130,7 +1130,7 @@ function generateTallyXml() {
       const cgstAmt = isCreditNote ? totalCgst : -totalCgst;
       ledgerEntriesXml += `
         <LEDGERENTRIES.LIST>
-          <LEDGERNAME>CGST</LEDGERNAME>
+          <LEDGERNAME>CGST...</LEDGERNAME>
           <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
           <AMOUNT>${cgstAmt.toFixed(2)}</AMOUNT>
         </LEDGERENTRIES.LIST>`;
@@ -1139,7 +1139,7 @@ function generateTallyXml() {
       const sgstAmt = isCreditNote ? totalSgst : -totalSgst;
       ledgerEntriesXml += `
         <LEDGERENTRIES.LIST>
-          <LEDGERNAME>SGST</LEDGERNAME>
+          <LEDGERNAME>SGST...</LEDGERNAME>
           <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
           <AMOUNT>${sgstAmt.toFixed(2)}</AMOUNT>
         </LEDGERENTRIES.LIST>`;
@@ -1149,7 +1149,7 @@ function generateTallyXml() {
       const igstAmt = isCreditNote ? totalIgst : -totalIgst;
       ledgerEntriesXml += `
         <LEDGERENTRIES.LIST>
-          <LEDGERNAME>IGST</LEDGERNAME>
+          <LEDGERNAME>IGST...</LEDGERNAME>
           <ISDEEMEDPOSITIVE>${isCreditNote ? "Yes" : "No"}</ISDEEMEDPOSITIVE>
           <AMOUNT>${igstAmt.toFixed(2)}</AMOUNT>
         </LEDGERENTRIES.LIST>`;
@@ -1307,7 +1307,7 @@ async function fetchRealtimeVoucherNumber(vchType = "Sales") {
 
   // Immediate sequential baselines from verified Tally Day Book
   const fallbackMap = {
-    "Sales": "NFM/26-27/14504",
+    "Sales": "NFM/26-27/14524",
     "Credit Note": "263",
     "Debit Note": "77",
     "Receipt": "4963",
@@ -1323,7 +1323,7 @@ async function fetchRealtimeVoucherNumber(vchType = "Sales") {
 
   if (!vchInput) return;
 
-  vchInput.value = fallbackMap[vchType] || "NFM/26-27/14504";
+  vchInput.value = fallbackMap[vchType] || "NFM/26-27/14524";
   if (statusSpan) statusSpan.innerHTML = `🟢 Live Sequence: <strong>${vchInput.value}</strong>`;
 
   // 2. Query live Tally API with 12-second timeout for full real-time Day Book accuracy
@@ -1474,14 +1474,16 @@ async function pushVoucherToTally() {
 
       // Auto-increment invoice number
       incrementVoucherNumber();
-    } else if (responseText.includes("<LINEERROR>")) {
-      const match = responseText.match(/<LINEERROR>(.*?)<\/LINEERROR>/);
-      const errMsg = match ? match[1] : "Tally Rejected the Voucher";
-      showToast(`Tally Error: ${errMsg}`, "error");
-      console.error("Tally Line Error:", responseText);
     } else {
-      showToast("Voucher packet dispatched to Tally Gateway", "info");
-      console.log("Tally Gateway Response:", responseText);
+      let errMsg = "Tally ne voucher reject kar diya (Entry nahi bani)";
+      const lineMatch = responseText.match(/<LINEERROR>(.*?)<\/LINEERROR>/);
+      const descMatch = responseText.match(/<DESC>(.*?)<\/DESC>/);
+      if (lineMatch) errMsg = `Tally Error: ${lineMatch[1]}`;
+      else if (descMatch) errMsg = `Tally: ${descMatch[1]}`;
+      else if (responseText.includes("<EXCEPTIONS>1</EXCEPTIONS>")) errMsg = "Tally Exception: Duplicate Voucher Number ya Ledger Mismatch!";
+      
+      showToast(`❌ ${errMsg}`, "error");
+      console.error("Tally Rejection Details:", responseText);
     }
   } catch (err) {
     console.error("Push Error:", err);

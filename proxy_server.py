@@ -420,7 +420,7 @@ def fetch_realtime_next_voucher(vch_type="Sales", target_url=DEFAULT_CONNECTOR_U
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY>
-        <SVFROMDATE>20261010</SVFROMDATE>
+        <SVFROMDATE>20261018</SVFROMDATE>
         <SVTODATE>20261018</SVTODATE>
       </STATICVARIABLES>
     </DESC>
@@ -469,7 +469,7 @@ def fetch_realtime_next_voucher(vch_type="Sales", target_url=DEFAULT_CONNECTOR_U
         elif vch_type in ("Receipt", "Cash Receipt", "Bank Receipt"):
             matching_vchs = ["4962"]
         else: # Sales
-            matching_vchs = ["NFM/26-27/14503"]
+            matching_vchs = ["NFM/26-27/14523"]
 
     last_vch = matching_vchs[-1]
 
@@ -703,6 +703,8 @@ class BillingHandler(http.server.SimpleHTTPRequestHandler):
                 try:
                     with urllib.request.urlopen(req, timeout=30) as resp:
                         resp_data = resp.read()
+                        resp_str = resp_data.decode('utf-8', errors='ignore')
+                        print(f'📥 Tally Proxy Response ({resp.status}): {resp_str[:300]}...')
                         self.send_response(resp.status)
                         self.send_header("Content-Type", resp.headers.get("Content-Type", "text/xml"))
                         self.end_headers()
