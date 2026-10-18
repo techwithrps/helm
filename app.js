@@ -1183,30 +1183,31 @@ async function fetchRealtimeVoucherNumber(vchType = "Sales") {
   const vchInput = document.getElementById("voucher-no");
   const statusSpan = document.getElementById("voucher-sync-status");
 
-  // Immediate sequential fallbacks based on verified Tally registers
+  // Immediate sequential baselines from verified Tally Day Book
   const fallbackMap = {
-    "Sales": "NFM/26-27/13740",
-    "Credit Note": "249",
+    "Sales": "NFM/26-27/14504",
+    "Credit Note": "263",
     "Debit Note": "77",
-    "Receipt": "1074",
-    "Cash Receipt": "1074"
+    "Receipt": "4963",
+    "Cash Receipt": "1255",
+    "Bank Receipt": "2289"
   };
 
   if (vchType === "Receipt" || vchType === "Cash Receipt") {
     const rInput = document.getElementById("receipt-vch-no");
-    if (rInput) rInput.value = "1074";
+    if (rInput) rInput.value = fallbackMap[vchType] || "1255";
     return;
   }
 
   if (!vchInput) return;
 
-  vchInput.value = fallbackMap[vchType] || "NFM/26-27/13740";
+  vchInput.value = fallbackMap[vchType] || "NFM/26-27/14504";
   if (statusSpan) statusSpan.innerHTML = `🟢 Live Sequence: <strong>${vchInput.value}</strong>`;
 
-  // 2. Query live Tally API with short 3-second timeout
+  // 2. Query live Tally API with 12-second timeout for full real-time Day Book accuracy
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     const res = await fetch(`/api/next-voucher?type=${encodeURIComponent(vchType)}`, {
       headers: { "X-Tally-URL": appConfig.connectorUrl, "X-Tally-Company": appConfig.companyName },
