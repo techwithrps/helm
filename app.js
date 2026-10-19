@@ -29,7 +29,7 @@ const INDIAN_STATES = [
 
 // 2. Default Configuration & State
 const appConfig = {
-  connectorUrl: "https://courtesy-vanilla-volvo-blocking.trycloudflare.com/?key=infra_d4e4f164a4d442d4",
+  connectorUrl: "https://treasurer-crops-mercy-unless.trycloudflare.com/?key=infra_28eb2b9ca24548f4",
   companyName: "Nanak Food Mart",
   companyGstin: "07AAAAA0000A1Z5",
   companyStateCode: "07",

@@ -23,7 +23,7 @@ import re
 import xml.etree.ElementTree as ET
 
 PORT = 8090
-DEFAULT_CONNECTOR_URL = os.environ.get("TALLY_URL") or "https://courtesy-vanilla-volvo-blocking.trycloudflare.com/?key=infra_d4e4f164a4d442d4"
+DEFAULT_CONNECTOR_URL = os.environ.get("TALLY_URL") or "https://treasurer-crops-mercy-unless.trycloudflare.com/?key=infra_28eb2b9ca24548f4"
 DEFAULT_COMPANY = "Nanak Food Mart"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -420,8 +420,8 @@ def fetch_realtime_next_voucher(vch_type="Sales", target_url=DEFAULT_CONNECTOR_U
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY>
-        <SVFROMDATE>20261018</SVFROMDATE>
-        <SVTODATE>20261018</SVTODATE>
+        <SVFROMDATE>20261017</SVFROMDATE>
+        <SVTODATE>20261019</SVTODATE>
       </STATICVARIABLES>
     </DESC>
   </BODY>
